@@ -54,3 +54,7 @@ htmlcov/
 *.log
 dump.rdb
 .openclaude/
+
+# Internal docs (not for public)
+openreef_doc(es).md
+openreef_mvp_doc(es).md
