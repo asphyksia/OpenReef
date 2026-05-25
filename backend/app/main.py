@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import auth, datasets, health, jobs, models, payments
+from app.config import settings
 
 
 @asynccontextmanager
@@ -13,9 +14,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="OpenReef API", version="0.1.0", lifespan=lifespan)
 
+# Parse allowed origins from config (comma-separated)
+_cors_origins = [o.strip() for o in settings.frontend_url.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

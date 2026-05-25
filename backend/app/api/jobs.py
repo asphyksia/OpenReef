@@ -73,7 +73,11 @@ async def cancel_job(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    job = await db.get(Job, job_id)
+    # Use for_update to prevent race conditions on cancel
+    result = await db.execute(
+        select(Job).where(Job.id == job_id).with_for_update()
+    )
+    job = result.scalar_one_or_none()
     if job is None or job.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 

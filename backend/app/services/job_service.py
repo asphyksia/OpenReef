@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base_model import BaseModel as DBBaseModel
+from app.models.dataset import Dataset
 from app.models.job import Job
 from app.services import credit_service
 
@@ -37,7 +38,7 @@ async def estimate_cost(db: AsyncSession, base_model_id: uuid.UUID, preset: str)
 
 
 async def has_active_job(db: AsyncSession, user_id: uuid.UUID) -> bool:
-    active_statuses = ("pending", "validating", "queued", "provisioning", "running", "checkpointing")
+    active_statuses = ("pending", "queued", "provisioning", "running")
     result = await db.execute(
         select(Job.id).where(Job.user_id == user_id, Job.status.in_(active_statuses)).limit(1)
     )
@@ -66,6 +67,11 @@ async def create_job(
             detail=f"Insufficient balance. Need ${estimated_cost}, have ${balance}",
         )
 
+    # Verify dataset belongs to user
+    dataset = await db.get(Dataset, dataset_id)
+    if dataset is None or dataset.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
     job = Job(
         user_id=user_id,
         dataset_id=dataset_id,
@@ -82,7 +88,11 @@ async def create_job(
 
 
 async def confirm_job(db: AsyncSession, user_id: uuid.UUID, job_id: uuid.UUID) -> Job:
-    job = await db.get(Job, job_id)
+    # Use for_update to prevent race conditions on double-confirm
+    result = await db.execute(
+        select(Job).where(Job.id == job_id).with_for_update()
+    )
+    job = result.scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     if job.user_id != user_id:
