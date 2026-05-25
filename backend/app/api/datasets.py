@@ -1,0 +1,114 @@
+import uuid
+
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.dataset import Dataset
+from app.models.user import User
+from app.schemas.dataset import DatasetResponse
+from app.services import dataset_service
+
+router = APIRouter(prefix="/api/datasets", tags=["datasets"])
+
+
+@router.get("", response_model=list[DatasetResponse])
+async def list_datasets(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Dataset).where(Dataset.user_id == user.id).order_by(Dataset.created_at.desc())
+    )
+    datasets = result.scalars().all()
+    return [_to_response(d) for d in datasets]
+
+
+@router.post("", response_model=DatasetResponse, status_code=status.HTTP_201_CREATED)
+async def upload_dataset(
+    file: UploadFile,
+    name: str | None = Form(None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    content = await file.read()
+    filename = file.filename or "unknown"
+    fmt = _detect_format(filename)
+
+    row_count, errors = dataset_service.validate_dataset(content, fmt)
+
+    # For MVP: store metadata only; file persistence + R2 upload for later
+    validation_status = "invalid" if errors else "valid"
+    r2_key = f"datasets/{user.id}/{uuid.uuid4()}/{filename}"
+
+    dataset = Dataset(
+        user_id=user.id,
+        name=name or filename,
+        filename=filename,
+        format=fmt,
+        size_bytes=len(content),
+        row_count=row_count if not errors else None,
+        validation_status=validation_status,
+        validation_errors=errors,
+        r2_key=r2_key,
+    )
+    db.add(dataset)
+    await db.commit()
+    await db.refresh(dataset)
+
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"validation_errors": errors},
+        )
+
+    return _to_response(dataset)
+
+
+@router.get("/{dataset_id}", response_model=DatasetResponse)
+async def get_dataset(
+    dataset_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    dataset = await db.get(Dataset, dataset_id)
+    if dataset is None or dataset.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+    return _to_response(dataset)
+
+
+@router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_dataset(
+    dataset_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    dataset = await db.get(Dataset, dataset_id)
+    if dataset is None or dataset.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+    await db.delete(dataset)
+    await db.commit()
+
+
+def _detect_format(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext == "jsonl":
+        return "jsonl"
+    elif ext == "csv":
+        return "csv"
+    elif ext == "txt":
+        return "txt"
+    return "jsonl"  # default
+
+
+def _to_response(d: Dataset) -> DatasetResponse:
+    return DatasetResponse(
+        id=d.id,
+        name=d.name,
+        filename=d.filename,
+        format=d.format,
+        size_bytes=d.size_bytes,
+        row_count=d.row_count,
+        validation_status=d.validation_status,
+        validation_errors=d.validation_errors or [],
+        created_at=d.created_at.isoformat() if d.created_at else "",
+    )

@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: hsl(var(--border, 214.3 31.8% 91.4%));
+  }
+  body {
+    background-color: hsl(var(--background, 0 0% 100%));
+    color: hsl(var(--foreground, 222.2 84% 4.9%));
+  }
+}

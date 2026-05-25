@@ -1,0 +1,42 @@
+# FastAPI + server
+fastapi>=0.115.12
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.20
+
+# Database
+sqlalchemy[asyncio]>=2.0.36
+asyncpg>=0.30.0
+alembic>=1.14.0
+psycopg2-binary>=2.9.9
+
+# Auth
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.1
+
+# Validation
+pydantic[email]>=2.11
+pydantic-settings>=2.7.0
+
+# Queue
+celery>=5.4.0
+redis>=5.2.1
+flower>=2.0.1
+
+# Storage
+boto3>=1.35.90
+
+# Encryption
+cryptography>=44.0.0
+
+# OGPU Network (pins fastapi==0.115.12, pydantic==2.11.4)
+ogpu>=0.2.1
+
+# Stripe
+stripe>=11.3.0
+
+# HTTP client
+httpx>=0.28.1
+
+# Email verification
+aiosmtplib>=3.0.2

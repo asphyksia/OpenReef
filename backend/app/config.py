@@ -1,0 +1,35 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    database_url: str = "postgresql+asyncpg://postgres:postgres@127.0.0.1:5444/openreef"
+    redis_url: str = "redis://127.0.0.1:6379/0"
+
+    jwt_secret: str = "dev-secret-change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 4320
+
+    r2_endpoint_url: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket_name: str = "openreef-mvp"
+
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_publishable_key: str = ""
+
+    # OGPU adapter: mock (local dev) or real (production)
+    ogpu_adapter: str = "mock"
+
+    # OGPU Network (only needed when ogpu_adapter=real)
+    client_private_key: str = ""
+    ogpu_source_address: str = ""
+    ogpu_use_testnet: str = "true"
+
+    frontend_url: str = "http://localhost:3000"
+    api_url: str = "http://localhost:8000"
+
+    model_config = {"env_file": ".env"}
+
+
+settings = Settings()
