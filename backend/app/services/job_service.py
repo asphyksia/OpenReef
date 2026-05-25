@@ -100,9 +100,18 @@ async def confirm_job(db: AsyncSession, user_id: uuid.UUID, job_id: uuid.UUID) -
     if job.status != "pending":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Job cannot be confirmed in status '{job.status}'")
 
-    # Charge the estimated cost
+    # Lock user's credit ledger rows to prevent concurrent overdrafts
+    balance = await credit_service.get_balance_for_update(db, user_id)
+    estimated_cost = float(job.estimated_cost)
+    if balance < estimated_cost:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient balance. Need ${estimated_cost:.2f}, have ${balance:.2f}",
+        )
+
+    # Charge the estimated cost (no commit — caller controls transaction)
     await credit_service.charge_credits(
-        db, user_id, float(job.estimated_cost), job.id, f"Fine-tuning job {job.id}"
+        db, user_id, estimated_cost, job.id, f"Fine-tuning job {job.id}"
     )
 
     job.status = "queued"

@@ -66,6 +66,7 @@ async def dev_add_credits(
     if settings.ogpu_adapter != "mock":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dev credits disabled in production")
     await credit_service.add_credits(db, user.id, amount, "Dev credits (MVP testing)")
+    await db.commit()
     balance = await credit_service.get_balance(db, user.id)
     return {"balance": balance}
 
@@ -80,9 +81,9 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
     try:
         event = stripe.Webhook.construct_event(
-            payload, sig_hash=sig_header, secret=settings.stripe_webhook_secret
+            payload, sig_header, settings.stripe_webhook_secret
         )
-    except (ValueError, stripe.SignatureVerificationError):
+    except (ValueError, TypeError, stripe.SignatureVerificationError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook signature")
 
     # Idempotency: skip already-processed events
