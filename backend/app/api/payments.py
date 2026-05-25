@@ -1,14 +1,19 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
+from app.models.credit_ledger import ProcessedEvent
 from app.schemas.payment import BalanceResponse, CheckoutSessionRequest
 from app.services import credit_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
@@ -25,7 +30,7 @@ async def create_checkout_session(
     user: User = Depends(get_current_user),
 ):
     """Create a Stripe Checkout Session to add credits."""
-    if not settings.stripe_secret_key or "placeholder" in settings.stripe_secret_key:
+    if settings.ogpu_adapter != "real":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Stripe not configured (dev mode)")
 
     import stripe
@@ -57,9 +62,9 @@ async def dev_add_credits(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Development-only: add credits without Stripe. Only works when STRIPE_SECRET_KEY contains 'test_placeholder'."""
-    if not settings.stripe_secret_key or 'placeholder' not in settings.stripe_secret_key:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only available in dev mode")
+    """Development-only: add credits without Stripe. Only available when OGPU_ADAPTER=mock."""
+    if settings.ogpu_adapter != "mock":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dev credits disabled in production")
     await credit_service.add_credits(db, user.id, amount, "Dev credits (MVP testing)")
     balance = await credit_service.get_balance(db, user.id)
     return {"balance": balance}
@@ -75,10 +80,15 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
     try:
         event = stripe.Webhook.construct_event(
-            payload, sig_header, settings.stripe_webhook_secret
+            payload, sig_hash=sig_header, secret=settings.stripe_webhook_secret
         )
     except (ValueError, stripe.SignatureVerificationError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook signature")
+
+    # Idempotency: skip already-processed events
+    existing = await db.execute(select(ProcessedEvent).where(ProcessedEvent.event_id == event["id"]))
+    if existing.scalar_one_or_none():
+        return {"received": True, "duplicate": True}
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
@@ -89,5 +99,11 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             await credit_service.add_credits(
                 db, uuid.UUID(user_id_str), amount_total, f"Stripe payment {session['id']}"
             )
+            db.add(ProcessedEvent(event_id=event["id"]))
+            await db.commit()
+            return {"received": True}
 
+    # Mark non-payment events as processed too
+    db.add(ProcessedEvent(event_id=event["id"]))
+    await db.commit()
     return {"received": True}

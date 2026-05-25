@@ -1,3 +1,5 @@
+import os
+import warnings
 from pydantic_settings import BaseSettings
 
 
@@ -31,5 +33,24 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env"}
 
+    def validate_production(self) -> None:
+        """Fail startup if required secrets are missing in production mode."""
+        if self.ogpu_adapter == "real":
+            missing = []
+            if self.jwt_secret == "dev-secret-change-me":
+                missing.append("JWT_SECRET")
+            if self.stripe_secret_key and "placeholder" in self.stripe_secret_key:
+                missing.append("STRIPE_SECRET_KEY (must be a real key)")
+            if self.client_private_key == "":
+                missing.append("CLIENT_PRIVATE_KEY")
+            if missing:
+                raise RuntimeError(
+                    f"Missing required secrets for production: {', '.join(missing)}"
+                )
+
 
 settings = Settings()
+
+# Warn if running with default JWT secret in non-mock mode
+if settings.jwt_secret == "dev-secret-change-me" and settings.ogpu_adapter == "mock":
+    warnings.warn("Using default JWT_SECRET — fine for development only", UserWarning)

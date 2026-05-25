@@ -9,6 +9,8 @@ from app.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate production secrets on startup
+    settings.validate_production()
     yield
 
 
