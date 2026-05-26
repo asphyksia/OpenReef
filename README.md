@@ -11,6 +11,9 @@ Simple, affordable AI fine-tuning on decentralized GPU infrastructure (OpenGPU N
 - **Payments** — Stripe Checkout + internal USD credits with append-only ledger
 - **Refunds** — automatic phase-based refunds (100%/50%/0%)
 - **Provider reliability** — automatic requeue on failure (max 3 attempts), provider reputation tracking
+- **Artifact validation** — output verified before marking job as completed (existence, size, format)
+- **Dynamic timeouts** — per-job limits based on preset + model size (7B fast: 2h, 13B quality: 16h)
+- **OGPU SDK v0.2.1 aligned** — snapshot polling, typed errors, vault balance checks, winner tracking
 - **Storage** — MinIO (dev) / Cloudflare R2 (prod), swappable via env var
 
 ## Stack
@@ -106,8 +109,11 @@ Switch with one env var: `OGPU_ADAPTER=mock` (default) or `OGPU_ADAPTER=real`.
 - **Auto-requeue**: if a provider abandons, the job goes back to queued (max 3 attempts total)
 - **Full refund**: after max attempts, job fails and user gets 100% refund
 - **Reputation tracking**: completed/failed/abandoned counters per provider address
+- **Artifact validation**: output checked before marking completed — invalid output triggers failure + refund
+- **Dynamic timeouts**: per-job limits based on preset + model size
 - **Heartbeat API**: providers send keepalive pings during training
 - **Cancel API**: providers can voluntarily cancel a job (triggers requeue or refund)
+- **SDK aligned**: snapshot polling, typed errors, vault balance checks, winner tracking
 
 ## Limits
 
