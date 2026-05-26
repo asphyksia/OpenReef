@@ -21,9 +21,8 @@ def _sync_engine():
 
 
 def _validate_provider_secret(x_provider_secret: str | None = Header(None)):
-    """Validate provider API secret from header."""
-    secret = x_provider_secret or settings.provider_api_secret
-    if secret != settings.provider_api_secret:
+    """Validate provider API secret from header. Must be present AND match."""
+    if x_provider_secret is None or x_provider_secret != settings.provider_api_secret:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid provider secret")
 
 
