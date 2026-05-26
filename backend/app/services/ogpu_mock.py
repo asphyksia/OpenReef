@@ -100,8 +100,21 @@ class MockOGPUAdapter(OGPUAdapter):
         if elapsed < self.FINALIZED_AFTER:
             return None
 
+        output_key = f"models/mock/{task_id}/adapter/"
+
+        # Create a dummy artifact in MinIO so validation passes in dev
+        from app.services import storage_service
+        try:
+            storage_service.upload_bytes(
+                data=b"mock-lora-adapter-artifact-content-for-validation-testing",
+                key=output_key,
+                content_type="application/octet-stream",
+            )
+        except Exception:
+            pass  # Bucket may not exist in some test scenarios
+
         return {
-            "output_key": f"models/mock/{task_id}/adapter/",
+            "output_key": output_key,
             "status": "completed",
             "adapter_type": "lora",
             "base_model": "mock-model",

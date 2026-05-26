@@ -114,16 +114,31 @@ def run_job(job_id: str):
                     job.provider_address = status_info.get("attempter_address")
 
             elif new_status == "completed" and job.status != "completed":
-                job.status = "completed"
-                job.status_detail = "Training complete"
-                job.progress_pct = 100
-                job.completed_at = datetime.utcnow()
-
                 result = ogpu_service.get_task_result(job.ogpu_task_address)
                 if result and isinstance(result, dict):
                     job.output_r2_key = result.get(
                         "output_key", f"models/{job.user_id}/{job.id}/adapter/"
                     )
+
+                # Validate the artifact before marking as completed
+                if job.output_r2_key:
+                    is_valid, reason = ogpu_service.validate_artifact(job.output_r2_key)
+                    if not is_valid:
+                        job.status = "failed"
+                        job.error_message = f"Invalid output artifact: {reason}"
+                        job.completed_at = datetime.utcnow()
+                        winner = status_info.get("winning_provider") or job.provider_address
+                        if winner:
+                            provider_service.record_provider_failure(session, winner)
+                        if job.estimated_cost and float(job.estimated_cost) > 0:
+                            credit_service.refund_credits_sync(session, job.user_id, float(job.estimated_cost), job.id, description="Invalid output artifact")
+                        session.commit()
+                        return
+
+                job.status = "completed"
+                job.status_detail = "Training complete"
+                job.progress_pct = 100
+                job.completed_at = datetime.utcnow()
 
                 # Track provider who completed the job — prefer winning_provider from SDK
                 winner = status_info.get("winning_provider") or job.provider_address

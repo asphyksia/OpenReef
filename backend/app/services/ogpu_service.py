@@ -6,6 +6,7 @@ based on the OGPU_ADAPTER env var.
 
 from app.services.ogpu_factory import get_adapter
 from app.services.ogpu_adapter import AxolotlConfig, build_task_config, get_preset_params
+from app.services.artifact_validation import validate_artifact
 
 
 def get_finetune_source_address() -> str:

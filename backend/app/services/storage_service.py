@@ -101,3 +101,20 @@ def presigned_url(key: str, expires_in: int = 3600) -> str:
         Params={"Bucket": _bucket, "Key": key},
         ExpiresIn=expires_in,
     )
+
+
+def head_object(key: str) -> dict | None:
+    """Check if an object exists and return its metadata, or None if not found."""
+    client = _get_client()
+    try:
+        response = client.head_object(Bucket=_bucket, Key=key)
+        return {
+            "content_length": response.get("ContentLength", 0),
+            "content_type": response.get("ContentType", ""),
+            "last_modified": response.get("LastModified"),
+        }
+    except ClientError as e:
+        status = e.response.get("Error", {}).get("Code")
+        if status in ("404", "NoSuchKey"):
+            return None
+        raise

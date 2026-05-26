@@ -129,6 +129,8 @@ def _to_response(j: Job) -> JobResponse:
         progress_pct=j.progress_pct,
         error_message=j.error_message,
         ogpu_task_address=j.ogpu_task_address,
+        requeue_count=j.requeue_count,
+        provider_address=j.provider_address,
         created_at=j.created_at.isoformat() if j.created_at else "",
         started_at=j.started_at.isoformat() if j.started_at else None,
         completed_at=j.completed_at.isoformat() if j.completed_at else None,
