@@ -58,3 +58,5 @@ dump.rdb
 # Internal docs (not for public)
 openreef_doc(es).md
 openreef_mvp_doc(es).md
+openreef_doc(en).md
+openreef_mvp_doc(en).md
