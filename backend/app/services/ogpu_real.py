@@ -12,7 +12,7 @@ import time
 
 from ogpu.chain import ChainConfig, ChainId
 from ogpu.client import publish_source, publish_task, cancel_task as cancel_task_sdk
-from ogpu.protocol import Task
+from ogpu.protocol import Task, vault
 from ogpu.types import (
     SourceInfo,
     TaskInfo,
@@ -70,6 +70,17 @@ class RealOGPUAdapter(OGPUAdapter):
     def publish_task(self, source_address: str, config: dict, payment: float) -> str:
         _ensure_chain()
 
+        # Pre-flight: verify vault has enough balance
+        try:
+            vault_balance = vault.get_balance_of(source_address)
+            if vault_balance < int(payment):
+                raise InsufficientBalanceError(
+                    f"Vault balance {vault_balance} wei < required payment {payment} wei"
+                )
+        except Exception:
+            # If we can't check balance, proceed anyway (vault may not exist for this address)
+            pass
+
         task_info = TaskInfo(
             source=source_address,
             config=TaskInput(
@@ -80,22 +91,31 @@ class RealOGPUAdapter(OGPUAdapter):
             payment=int(payment),
         )
 
-        task = publish_task(task_info)
-        return task.address
+        try:
+            task = publish_task(task_info)
+            return task.address
+        except InsufficientBalanceError:
+            raise
+        except SourceInactiveError as e:
+            raise RuntimeError(f"Source {source_address} is inactive. Publish a new source.") from e
+        except IPFSGatewayError as e:
+            raise RuntimeError(f"IPFS gateway error publishing task: {e}") from e
+        except MissingSignerError as e:
+            raise RuntimeError("Missing OGPU private key for signing") from e
 
     def get_task_status(self, task_id: str) -> dict:
-        """Use task.snapshot() for a single batch RPC call instead of separate get_status + get_num_attempts."""
+        """Use task.snapshot() for a single batch RPC call."""
         _ensure_chain()
         task = Task(task_id)
         snap = task.snapshot()
 
-        # Get first attempter address for provider tracking
         attempters = task.get_attempters()
         first_attempter = attempters[0] if attempters else None
-
-        # Get attempt timestamps for duration tracking
         timestamps = task.get_attempt_timestamps()
         duration_seconds = (timestamps[-1] - timestamps[0]) if len(timestamps) >= 2 else None
+
+        expiry_time = task.get_expiry_time()
+        time_remaining = expiry_time - int(time.time()) if expiry_time else None
 
         return {
             "status_name": snap.status.name.lower(),
@@ -104,6 +124,8 @@ class RealOGPUAdapter(OGPUAdapter):
             "attempt_timestamps": timestamps,
             "duration_seconds": duration_seconds,
             "winning_provider": snap.winning_provider,
+            "expiry_time": expiry_time,
+            "time_remaining_seconds": time_remaining,
         }
 
     def get_task_result(self, task_id: str) -> dict | None:

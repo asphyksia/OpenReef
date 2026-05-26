@@ -39,6 +39,10 @@ class MockOGPUAdapter(OGPUAdapter):
 
         elapsed = time.time() - created_at
 
+        # Mock expiry: 7200s from creation (same as real adapter default)
+        expiry_time = created_at + 7200
+        time_remaining = expiry_time - int(time.time())
+
         if elapsed >= self.FINALIZED_AFTER:
             return {
                 "status_name": "finalized",
@@ -47,6 +51,8 @@ class MockOGPUAdapter(OGPUAdapter):
                 "attempt_timestamps": [created_at + self.ATTEMPTED_AFTER],
                 "duration_seconds": None,
                 "winning_provider": "mock-provider-0x123",
+                "expiry_time": expiry_time,
+                "time_remaining_seconds": time_remaining,
             }
         elif elapsed >= self.RESPONDED_AFTER:
             return {
@@ -56,6 +62,8 @@ class MockOGPUAdapter(OGPUAdapter):
                 "attempt_timestamps": [created_at + self.ATTEMPTED_AFTER],
                 "duration_seconds": None,
                 "winning_provider": None,
+                "expiry_time": expiry_time,
+                "time_remaining_seconds": time_remaining,
             }
         elif elapsed >= self.ATTEMPTED_AFTER:
             return {
@@ -65,6 +73,8 @@ class MockOGPUAdapter(OGPUAdapter):
                 "attempt_timestamps": [created_at + self.ATTEMPTED_AFTER],
                 "duration_seconds": None,
                 "winning_provider": None,
+                "expiry_time": expiry_time,
+                "time_remaining_seconds": time_remaining,
             }
         else:
             return {
@@ -74,6 +84,8 @@ class MockOGPUAdapter(OGPUAdapter):
                 "attempt_timestamps": [],
                 "duration_seconds": None,
                 "winning_provider": None,
+                "expiry_time": expiry_time,
+                "time_remaining_seconds": time_remaining,
             }
 
     def get_task_result(self, task_id: str) -> dict | None:

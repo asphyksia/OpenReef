@@ -104,6 +104,15 @@ def run_job(job_id: str):
             new_status = status_map.get(chain_status, job.status)
             attempter_count = status_info.get("attempter_count", 0)
 
+            # Dynamic expiry check: use on-chain expiry time instead of fixed timeout
+            time_remaining = status_info.get("time_remaining_seconds")
+            if time_remaining is not None and time_remaining <= 0 and job.status not in ("completed", "failed"):
+                job.status = "failed"
+                job.error_message = "OGPU task expired (on-chain expiry reached)"
+                job.completed_at = datetime.utcnow()
+                session.commit()
+                return
+
             # Track provider address from first attempter when job starts running
             if new_status == "running" and job.status != "running":
                 job.status = "running"

@@ -79,6 +79,8 @@ class OGPUAdapter(ABC):
             "attempt_timestamps": list[int],      # unix timestamps of attempts
             "duration_seconds": float | None,     # time from first to last attempt
             "winning_provider": str | None,       # provider who completed the task
+            "expiry_time": int | None,            # unix timestamp when task expires
+            "time_remaining_seconds": int | None, # seconds until expiry
         }
         """
         ...
