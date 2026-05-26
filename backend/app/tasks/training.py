@@ -25,6 +25,16 @@ POLL_INTERVAL = 5 if _MOCK else 30
 MAX_RETRIES = 20 if _MOCK else 240
 MAX_REQUEUE = 2  # Max times a job can be requeued (3 total attempts)
 
+# Timeout multiplier: if job runs longer than estimated_hours * multiplier, fail it
+TIMEOUT_MULTIPLIER = 2.0
+
+# Estimated hours per preset (mirrors job_service.PRICING)
+PRESET_HOURS = {
+    "fast": 1,
+    "balanced": 2,
+    "quality": 4,
+}
+
 
 @celery_app.task(name="tasks.training.run_job")
 def run_job(job_id: str):
@@ -107,9 +117,17 @@ def run_job(job_id: str):
             # Track provider address from first attempter when job starts running
             if new_status == "running" and job.status != "running":
                 job.status = "running"
-                job.status_detail = f"Provider running ({attempter_count} attempter(s))"
                 job.started_at = datetime.utcnow()
                 job.progress_pct = max(job.progress_pct, 10)
+
+                # Calculate dynamic timeout based on preset and model size
+                base_model = session.get(DBBaseModel, job.base_model_id)
+                est_hours = PRESET_HOURS.get(job.preset, 2)
+                # 13B+ models take longer (mirrors job_service pricing logic)
+                if base_model and base_model.param_count >= 13:
+                    est_hours *= 2
+                timeout_seconds = int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
+                job.status_detail = f"Provider running (timeout: {timeout_seconds // 3600}h estimated)"
                 if attempter_count > 0 and job.provider_address is None:
                     job.provider_address = status_info.get("attempter_address")
 
@@ -145,6 +163,26 @@ def run_job(job_id: str):
                 if winner:
                     provider_service.record_provider_completion(session, winner)
                     job.provider_address = winner
+
+            # Dynamic timeout check: fail job if running too long
+            if job.status == "running" and job.started_at:
+                elapsed = (datetime.utcnow() - job.started_at).total_seconds()
+                base_model = session.get(DBBaseModel, job.base_model_id)
+                est_hours = PRESET_HOURS.get(job.preset, 2)
+                if base_model and base_model.param_count >= 13:
+                    est_hours *= 2
+                timeout_seconds = int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
+
+                if elapsed > timeout_seconds:
+                    job.status = "failed"
+                    job.error_message = f"Job timed out ({elapsed / 3600:.1f}h > {timeout_seconds / 3600:.1f}h limit)"
+                    job.completed_at = datetime.utcnow()
+                    if job.provider_address:
+                        provider_service.record_provider_failure(session, job.provider_address)
+                    if job.estimated_cost and float(job.estimated_cost) > 0:
+                        credit_service.refund_credits_sync(session, job.user_id, float(job.estimated_cost), job.id, description="Job timed out")
+                    session.commit()
+                    return
 
             elif chain_status == "expired" and job.status not in ("completed", "failed"):
                 if job.requeue_count >= MAX_REQUEUE:
