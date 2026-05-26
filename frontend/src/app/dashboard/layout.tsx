@@ -21,7 +21,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     getMe().then(setUser).catch(() => router.push("/login"));
-  }, [router]);
+  }, [router, pathname]);
 
   if (!user) {
     return (

@@ -22,6 +22,8 @@ class JobResponse(BaseModel):
     progress_pct: int
     error_message: str | None
     ogpu_task_address: str | None
+    requeue_count: int
+    provider_address: str | None
     created_at: str
     started_at: str | None
     completed_at: str | None

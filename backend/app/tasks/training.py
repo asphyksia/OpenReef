@@ -10,7 +10,7 @@ from app.config import settings
 from app.tasks.celery_app import celery_app
 
 # Import all models so SQLAlchemy has the full schema
-from app.models import user, dataset, job, credit_ledger, base_model  # noqa: F401
+from app.models import user, dataset, job, credit_ledger, base_model, provider  # noqa: F401
 
 # Sync engine for Celery tasks (avoids asyncpg event loop issues)
 def _build_sync_url():
@@ -23,6 +23,7 @@ sync_engine = create_engine(_build_sync_url())
 _MOCK = os.environ.get("OGPU_ADAPTER", "mock").lower() != "real"
 POLL_INTERVAL = 5 if _MOCK else 30
 MAX_RETRIES = 20 if _MOCK else 240
+MAX_REQUEUE = 2  # Max times a job can be requeued (3 total attempts)
 
 
 @celery_app.task(name="tasks.training.run_job")
@@ -32,8 +33,7 @@ def run_job(job_id: str):
 
     from app.models.job import Job
     from app.models.base_model import BaseModel as DBBaseModel
-    from app.models.credit_ledger import CreditLedger
-    from app.services import ogpu_service
+    from app.services import credit_service, ogpu_service, provider_service
 
     with Session(sync_engine) as session:
         job = session.get(Job, uuid.UUID(job_id))
@@ -104,11 +104,14 @@ def run_job(job_id: str):
             new_status = status_map.get(chain_status, job.status)
             attempter_count = status_info.get("attempter_count", 0)
 
+            # Track provider address when job starts running
             if new_status == "running" and job.status != "running":
                 job.status = "running"
                 job.status_detail = f"Provider running ({attempter_count} attempter(s))"
                 job.started_at = datetime.utcnow()
                 job.progress_pct = max(job.progress_pct, 10)
+                if attempter_count > 0 and job.provider_address is None:
+                    job.provider_address = status_info.get("attempter_address", job.provider_address)
 
             elif new_status == "completed" and job.status != "completed":
                 job.status = "completed"
@@ -121,24 +124,34 @@ def run_job(job_id: str):
                     job.output_r2_key = result.get(
                         "output_key", f"models/{job.user_id}/{job.id}/adapter/"
                     )
+                if job.provider_address:
+                    provider_service.record_provider_completion(session, job.provider_address)
 
             elif chain_status == "expired" and job.status not in ("completed", "failed"):
-                job.status = "failed"
-                job.error_message = "OGPU task expired before completion"
-                job.completed_at = datetime.utcnow()
+                if job.requeue_count >= MAX_REQUEUE:
+                    job.status = "failed"
+                    job.error_message = f"OGPU task expired after {MAX_REQUEUE + 1} attempts"
+                    job.completed_at = datetime.utcnow()
+                    if job.provider_address:
+                        provider_service.record_provider_failure(session, job.provider_address)
+                    if job.estimated_cost and float(job.estimated_cost) > 0:
+                        credit_service.refund_credits_sync(session, job.user_id, float(job.estimated_cost), job.id, description="OGPU task expired after max requeues")
+                else:
+                    job.requeue_count += 1
+                    job.status = "queued"
+                    job.started_at = None
+                    job.status_detail = f"Provider expired, requeued (attempt {job.requeue_count + 1}/3)"
+                    if job.provider_address:
+                        provider_service.record_provider_failure(session, job.provider_address)
+                    session.commit()
+                    run_job.apply_async(args=[job_id], countdown=POLL_INTERVAL)
+                    return
 
-                if job.estimated_cost and float(job.estimated_cost) > 0:
-                    session.add(CreditLedger(
-                        user_id=job.user_id,
-                        amount=float(job.estimated_cost),
-                        type="refund",
-                        job_id=job.id,
-                        description="OGPU task expired"
-                    ))
-
-            elif chain_status == "canceled" and job.status not in ("completed", "failed"):
+            elif chain_status == "canceled" and job.status not in ("completed", "failed", "cancelled"):
                 job.status = "cancelled"
                 job.completed_at = datetime.utcnow()
+                if job.provider_address:
+                    provider_service.record_provider_failure(session, job.provider_address)
 
             session.commit()
 

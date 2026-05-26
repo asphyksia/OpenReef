@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     # OGPU adapter: mock (local dev) or real (production)
     ogpu_adapter: str = "mock"
+    provider_api_secret: str = os.environ.get("PROVIDER_API_SECRET", "dev-secret-change-me")
 
     # OGPU Network (only needed when ogpu_adapter=real)
     client_private_key: str = ""

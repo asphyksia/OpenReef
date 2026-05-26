@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, datasets, health, jobs, models, payments
+from app.api import auth, datasets, health, jobs, models, payments, providers, providers
 from app.config import settings
 
 
@@ -33,4 +33,6 @@ app.include_router(datasets.router)
 app.include_router(jobs.router)
 app.include_router(models.router)
 app.include_router(payments.router)
+app.include_router(providers.router)
 app.include_router(health.router)
+app.include_router(providers.router)
