@@ -11,9 +11,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 4320
 
-    r2_endpoint_url: str = ""
-    r2_access_key_id: str = ""
-    r2_secret_access_key: str = ""
+    r2_endpoint_url: str = "http://127.0.0.1:9000"
+    r2_access_key_id: str = "minioadmin"
+    r2_secret_access_key: str = "minioadmin"
     r2_bucket_name: str = "openreef-mvp"
 
     stripe_secret_key: str = ""

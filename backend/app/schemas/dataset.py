@@ -12,5 +12,6 @@ class DatasetResponse(BaseModel):
     validation_status: str
     validation_errors: list
     created_at: str
+    download_url: str | None = None
 
     model_config = {"from_attributes": True}

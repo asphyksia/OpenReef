@@ -9,7 +9,7 @@ from app.dependencies import get_current_user
 from app.models.dataset import Dataset
 from app.models.user import User
 from app.schemas.dataset import DatasetResponse
-from app.services import dataset_service
+from app.services import dataset_service, storage_service
 
 router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 
@@ -36,9 +36,20 @@ async def upload_dataset(
 
     row_count, errors = dataset_service.validate_dataset(content, fmt)
 
-    # For MVP: store metadata only; file persistence + R2 upload for later
-    validation_status = "invalid" if errors else "valid"
+    if errors:
+        return DatasetResponse(
+            id=uuid.uuid4(), name=name or filename, filename=filename,
+            format=fmt, size_bytes=len(content), row_count=None,
+            validation_status="invalid", validation_errors=errors,
+            created_at="", download_url=None,
+        )
+
+    # Upload to object storage (MinIO/R2)
     r2_key = f"datasets/{user.id}/{uuid.uuid4()}/{filename}"
+    content_type = "text/csv" if fmt == "csv" else "application/octet-stream"
+    storage_service.upload_bytes(content, r2_key, content_type=content_type)
+
+    download_url = storage_service.presigned_url(r2_key)
 
     dataset = Dataset(
         user_id=user.id,
@@ -46,22 +57,16 @@ async def upload_dataset(
         filename=filename,
         format=fmt,
         size_bytes=len(content),
-        row_count=row_count if not errors else None,
-        validation_status=validation_status,
-        validation_errors=errors,
+        row_count=row_count,
+        validation_status="valid",
+        validation_errors=[],
         r2_key=r2_key,
     )
     db.add(dataset)
     await db.commit()
     await db.refresh(dataset)
 
-    if errors:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"validation_errors": errors},
-        )
-
-    return _to_response(dataset)
+    return _to_response(dataset, r2_url=download_url)
 
 
 @router.get("/{dataset_id}", response_model=DatasetResponse)
@@ -85,6 +90,8 @@ async def delete_dataset(
     dataset = await db.get(Dataset, dataset_id)
     if dataset is None or dataset.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+    if dataset.r2_key:
+        storage_service.delete_file(dataset.r2_key)
     await db.delete(dataset)
     await db.commit()
 
@@ -100,7 +107,7 @@ def _detect_format(filename: str) -> str:
     return "jsonl"  # default
 
 
-def _to_response(d: Dataset) -> DatasetResponse:
+def _to_response(d: Dataset, r2_url: str | None = None) -> DatasetResponse:
     return DatasetResponse(
         id=d.id,
         name=d.name,
@@ -111,4 +118,5 @@ def _to_response(d: Dataset) -> DatasetResponse:
         validation_status=d.validation_status,
         validation_errors=d.validation_errors or [],
         created_at=d.created_at.isoformat() if d.created_at else "",
+        download_url=r2_url,
     )
