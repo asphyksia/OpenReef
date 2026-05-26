@@ -40,13 +40,41 @@ class MockOGPUAdapter(OGPUAdapter):
         elapsed = time.time() - created_at
 
         if elapsed >= self.FINALIZED_AFTER:
-            return {"status_name": "finalized", "attempter_count": 1}
+            return {
+                "status_name": "finalized",
+                "attempter_count": 1,
+                "attempter_address": "mock-provider-0x123",
+                "attempt_timestamps": [created_at + self.ATTEMPTED_AFTER],
+                "duration_seconds": None,
+                "winning_provider": "mock-provider-0x123",
+            }
         elif elapsed >= self.RESPONDED_AFTER:
-            return {"status_name": "responded", "attempter_count": 1}
+            return {
+                "status_name": "responded",
+                "attempter_count": 1,
+                "attempter_address": "mock-provider-0x123",
+                "attempt_timestamps": [created_at + self.ATTEMPTED_AFTER],
+                "duration_seconds": None,
+                "winning_provider": None,
+            }
         elif elapsed >= self.ATTEMPTED_AFTER:
-            return {"status_name": "attempted", "attempter_count": 1}
+            return {
+                "status_name": "attempted",
+                "attempter_count": 1,
+                "attempter_address": "mock-provider-0x123",
+                "attempt_timestamps": [created_at + self.ATTEMPTED_AFTER],
+                "duration_seconds": None,
+                "winning_provider": None,
+            }
         else:
-            return {"status_name": "new", "attempter_count": 0}
+            return {
+                "status_name": "new",
+                "attempter_count": 0,
+                "attempter_address": None,
+                "attempt_timestamps": [],
+                "duration_seconds": None,
+                "winning_provider": None,
+            }
 
     def get_task_result(self, task_id: str) -> dict | None:
         # Extract timestamp

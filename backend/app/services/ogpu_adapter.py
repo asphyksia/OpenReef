@@ -75,6 +75,10 @@ class OGPUAdapter(ABC):
         Returns: {
             "status_name": "new" | "attempted" | "responded" | "finalized" | "expired" | "canceled",
             "attempter_count": int,
+            "attempter_address": str | None,      # first provider to attempt the task
+            "attempt_timestamps": list[int],      # unix timestamps of attempts
+            "duration_seconds": float | None,     # time from first to last attempt
+            "winning_provider": str | None,       # provider who completed the task
         }
         """
         ...

@@ -104,14 +104,14 @@ def run_job(job_id: str):
             new_status = status_map.get(chain_status, job.status)
             attempter_count = status_info.get("attempter_count", 0)
 
-            # Track provider address when job starts running
+            # Track provider address from first attempter when job starts running
             if new_status == "running" and job.status != "running":
                 job.status = "running"
                 job.status_detail = f"Provider running ({attempter_count} attempter(s))"
                 job.started_at = datetime.utcnow()
                 job.progress_pct = max(job.progress_pct, 10)
                 if attempter_count > 0 and job.provider_address is None:
-                    job.provider_address = status_info.get("attempter_address", job.provider_address)
+                    job.provider_address = status_info.get("attempter_address")
 
             elif new_status == "completed" and job.status != "completed":
                 job.status = "completed"
@@ -124,8 +124,12 @@ def run_job(job_id: str):
                     job.output_r2_key = result.get(
                         "output_key", f"models/{job.user_id}/{job.id}/adapter/"
                     )
-                if job.provider_address:
-                    provider_service.record_provider_completion(session, job.provider_address)
+
+                # Track provider who completed the job — prefer winning_provider from SDK
+                winner = status_info.get("winning_provider") or job.provider_address
+                if winner:
+                    provider_service.record_provider_completion(session, winner)
+                    job.provider_address = winner
 
             elif chain_status == "expired" and job.status not in ("completed", "failed"):
                 if job.requeue_count >= MAX_REQUEUE:

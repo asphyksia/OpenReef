@@ -20,8 +20,17 @@ from ogpu.types import (
     ImageEnvironments,
     DeliveryMethod,
 )
-
 from app.services.ogpu_adapter import OGPUAdapter
+
+# SDK v0.2.1 typed errors for granular handling
+from ogpu.types import (
+    InsufficientBalanceError,
+    SourceInactiveError,
+    TaskAlreadyFinalizedError,
+    MissingSignerError,
+    IPFSGatewayError,
+    IPFSFetchError,
+)
 
 
 _OGPU_TESTNET = os.environ.get("OGPU_USE_TESTNET", "true").lower() == "true"
@@ -75,12 +84,26 @@ class RealOGPUAdapter(OGPUAdapter):
         return task.address
 
     def get_task_status(self, task_id: str) -> dict:
+        """Use task.snapshot() for a single batch RPC call instead of separate get_status + get_num_attempts."""
         _ensure_chain()
         task = Task(task_id)
-        status = task.get_status()
+        snap = task.snapshot()
+
+        # Get first attempter address for provider tracking
+        attempters = task.get_attempters()
+        first_attempter = attempters[0] if attempters else None
+
+        # Get attempt timestamps for duration tracking
+        timestamps = task.get_attempt_timestamps()
+        duration_seconds = (timestamps[-1] - timestamps[0]) if len(timestamps) >= 2 else None
+
         return {
-            "status_name": status.name.lower(),
-            "attempter_count": task.get_num_attempts(),
+            "status_name": snap.status.name.lower(),
+            "attempter_count": snap.attempt_count,
+            "attempter_address": first_attempter,
+            "attempt_timestamps": timestamps,
+            "duration_seconds": duration_seconds,
+            "winning_provider": snap.winning_provider,
         }
 
     def get_task_result(self, task_id: str) -> dict | None:
@@ -94,6 +117,13 @@ class RealOGPUAdapter(OGPUAdapter):
     def cancel_task(self, task_id: str) -> None:
         _ensure_chain()
         try:
-            cancel_task_sdk(task_id)
+            receipt = cancel_task_sdk(task_id)
+            # receipt.tx_hash and receipt.gas_used available for audit
+        except (TaskAlreadyFinalizedError, SourceInactiveError):
+            pass  # Task already done or source inactive
+        except (MissingSignerError, IPFSGatewayError) as e:
+            # Log but don't fail — cancel is best-effort
+            import logging
+            logging.getLogger(__name__).warning("Cancel failed: %s", e)
         except Exception:
             pass  # Task may already be finalized
