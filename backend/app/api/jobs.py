@@ -13,6 +13,15 @@ from app.services import job_service
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
+PRESET_HOURS = {"fast": 1, "balanced": 2, "quality": 4}
+TIMEOUT_MULTIPLIER = 2
+
+
+def _estimate_timeout_seconds(preset: str) -> int:
+    """Conservative estimate of total job duration in seconds."""
+    est_hours = PRESET_HOURS.get(preset, 2)
+    return int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
+
 
 @router.get("", response_model=list[JobResponse])
 async def list_jobs(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -37,7 +46,23 @@ async def get_job(
     if job.output_r2_key:
         from app.services import storage_service
         download_url = storage_service.presigned_url(job.output_r2_key)
-    return _to_response(job, download_url=download_url)
+
+    # Calculate dynamic progress and ETA for running jobs
+    progress_pct = job.progress_pct
+    estimated_completion = None
+    if job.status == "running" and job.started_at:
+        timeout_seconds = _estimate_timeout_seconds(job.preset)
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        started = job.started_at.replace(tzinfo=timezone.utc) if job.started_at.tzinfo is None else job.started_at
+        elapsed = (now - started).total_seconds()
+        if elapsed > 0 and timeout_seconds > 0:
+            progress_pct = min(int((elapsed / timeout_seconds) * 90 + 10), 99)
+            estimated_completion = (started + __import__("datetime", fromlist=["timedelta"]).timedelta(seconds=timeout_seconds)).isoformat()
+
+    return _to_response(job, download_url=download_url,
+                        progress_pct=progress_pct,
+                        estimated_completion=estimated_completion)
 
 
 @router.get("/{job_id}/download", response_model=JobResponse)
@@ -136,7 +161,7 @@ async def cancel_job(
     return _to_response(job)
 
 
-def _to_response(j: Job, *, download_url: str | None = None) -> JobResponse:
+def _to_response(j: Job, *, download_url: str | None = None, progress_pct: int | None = None, estimated_completion: str | None = None) -> JobResponse:
     return JobResponse(
         id=j.id,
         dataset_id=j.dataset_id,
@@ -147,7 +172,8 @@ def _to_response(j: Job, *, download_url: str | None = None) -> JobResponse:
         status_detail=j.status_detail,
         estimated_cost=float(j.estimated_cost) if j.estimated_cost else None,
         actual_cost=float(j.actual_cost) if j.actual_cost else None,
-        progress_pct=j.progress_pct,
+        progress_pct=progress_pct if progress_pct is not None else j.progress_pct,
+        estimated_completion=estimated_completion,
         error_message=j.error_message,
         ogpu_task_address=j.ogpu_task_address,
         requeue_count=j.requeue_count,

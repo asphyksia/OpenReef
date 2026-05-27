@@ -5,6 +5,18 @@ import { useParams, useRouter } from "next/navigation";
 import { getJob, confirmJob, cancelJob } from "@/lib/api";
 import type { Job } from "@/types";
 
+function formatETA(eta: string): string {
+  const target = new Date(eta);
+  const now = new Date();
+  const diffMs = target.getTime() - now.getTime();
+  if (diffMs <= 0) return "now";
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `~${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return `~${hours}h ${rem}m`;
+}
+
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   queued: "bg-blue-100 text-blue-800",
@@ -111,16 +123,21 @@ export default function JobDetailPage() {
           <span className="text-sm text-muted-foreground">Actual Cost</span>
           <span className="text-sm font-medium">${job.actual_cost?.toFixed(2) ?? "—"}</span>
         </div>
-        <div className="p-4 flex justify-between">
+        <div className="p-4 flex justify-between items-center">
           <span className="text-sm text-muted-foreground">Progress</span>
-          <span className="text-sm font-medium">{job.progress_pct}%</span>
+          <div className="flex items-center gap-2">
+            {job.estimated_completion && (
+              <span className="text-xs text-muted-foreground">ETA: {formatETA(job.estimated_completion)}</span>
+            )}
+            <span className="text-sm font-medium">{job.progress_pct}%</span>
+          </div>
         </div>
         {job.progress_pct > 0 && (
           <div className="p-4">
-            <div className="w-full bg-secondary rounded-full h-2">
+            <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
               <div
-                className="bg-primary h-2 rounded-full transition-all"
-                style={{ width: `${job.progress_pct}%` }}
+                className="bg-primary h-2 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(job.progress_pct, 100)}%` }}
               />
             </div>
           </div>

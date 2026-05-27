@@ -20,6 +20,7 @@ class JobResponse(BaseModel):
     estimated_cost: float | None
     actual_cost: float | None
     progress_pct: int
+    estimated_completion: str | None = None
     error_message: str | None
     ogpu_task_address: str | None
     requeue_count: int

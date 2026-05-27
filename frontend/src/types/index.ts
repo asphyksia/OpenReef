@@ -33,6 +33,7 @@ export interface Job {
   requeue_count: number;
   provider_address: string | null;
   download_url: string | null;
+  estimated_completion: string | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
