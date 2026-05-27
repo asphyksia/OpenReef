@@ -22,6 +22,12 @@ export default function DatasetsPage() {
     const file = form.get("file") as File;
     const name = (form.get("name") as string) || file.name;
 
+    if (file.size > 500 * 1024 * 1024) {
+      setError("File exceeds maximum size of 500 MB");
+      setUploading(false);
+      return;
+    }
+
     try {
       const dataset = await uploadDataset(file, name);
       setDatasets((prev) => [dataset, ...prev]);

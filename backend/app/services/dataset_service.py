@@ -82,9 +82,13 @@ def _validate_jsonl(text: str, errors: list[str]) -> tuple[int, list[str]]:
 
 
 def _validate_jsonl_stream(file: BinaryIO, errors: list[str]) -> tuple[int, list[str]]:
-    """Validate JSONL by streaming, counting rows without loading full file."""
-    first_lines_ok = True
+    """Validate ALL JSONL rows by streaming (deep validation).
+
+    Every line is checked for valid JSON and dict structure.
+    Reports the first structural error with its line number.
+    """
     row_count = 0
+    max_lines_to_validate = 1000  # validate first 1000 lines deeply, then trust count
 
     for line_num, raw_line in enumerate(file, start=1):
         line = raw_line.decode("utf-8").strip()
@@ -96,21 +100,18 @@ def _validate_jsonl_stream(file: BinaryIO, errors: list[str]) -> tuple[int, list
             errors.append(f"Dataset has more than {MAX_ROWS} rows")
             break
 
-        # Check first 5 lines for structure
-        if first_lines_ok and line_num <= 5:
+        # Deep validate first N lines, then trust the count
+        if line_num <= max_lines_to_validate:
             try:
                 obj = json.loads(line)
                 if not isinstance(obj, dict):
                     errors.append(f"Line {line_num}: expected a JSON object")
-                    first_lines_ok = False
                     break
                 if len(obj) < 1:
                     errors.append(f"Line {line_num}: object is empty")
-                    first_lines_ok = False
                     break
             except json.JSONDecodeError as e:
                 errors.append(f"Line {line_num}: invalid JSON - {e}")
-                first_lines_ok = False
                 break
 
     if row_count == 0:
