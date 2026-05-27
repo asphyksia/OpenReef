@@ -16,6 +16,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
 
+from app.services.pricing import PRESET_PARAMS
+
 
 @dataclass
 class AxolotlConfig:
@@ -29,12 +31,7 @@ class AxolotlConfig:
 
 def get_preset_params(preset: str) -> dict:
     """Convert preset name to Axolotl training parameters."""
-    presets = {
-        "fast": {"num_epochs": 1, "learning_rate": 2e-4, "batch_size": 4},
-        "balanced": {"num_epochs": 2, "learning_rate": 1e-4, "batch_size": 4},
-        "quality": {"num_epochs": 3, "learning_rate": 5e-5, "batch_size": 8},
-    }
-    return presets.get(preset, presets["balanced"])
+    return PRESET_PARAMS.get(preset, PRESET_PARAMS["balanced"])
 
 
 def build_task_config(axolotl: AxolotlConfig) -> dict:

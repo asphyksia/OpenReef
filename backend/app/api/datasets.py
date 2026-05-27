@@ -32,12 +32,9 @@ async def upload_dataset(
 ):
     # Check size from headers before reading body
     if file.size is not None and file.size > dataset_service.MAX_SIZE_BYTES:
-        return DatasetResponse(
-            id=uuid.uuid4(), name=name or "", filename=file.filename or "unknown",
-            format=_detect_format(file.filename or ""), size_bytes=file.size,
-            row_count=None, validation_status="invalid",
-            validation_errors=[f"Dataset exceeds maximum size of {dataset_service.MAX_SIZE_BYTES / (1024*1024):.0f}MB"],
-            created_at="", download_url=None,
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Dataset exceeds maximum size of {dataset_service.MAX_SIZE_BYTES / (1024*1024):.0f}MB",
         )
 
     filename = file.filename or "unknown"
@@ -47,11 +44,9 @@ async def upload_dataset(
     row_count, errors = dataset_service.validate_dataset_stream(file.file, fmt)
 
     if errors:
-        return DatasetResponse(
-            id=uuid.uuid4(), name=name or filename, filename=filename,
-            format=fmt, size_bytes=file.size or 0, row_count=None,
-            validation_status="invalid", validation_errors=errors,
-            created_at="", download_url=None,
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="; ".join(errors),
         )
 
     # Stream to object storage (no full read into memory)

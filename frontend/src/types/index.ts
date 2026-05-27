@@ -15,6 +15,7 @@ export interface Dataset {
   validation_status: string;
   validation_errors: string[];
   created_at: string;
+  download_url: string | null;
 }
 
 export interface Job {

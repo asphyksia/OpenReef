@@ -10,11 +10,9 @@ from app.models.job import Job
 from app.models.user import User
 from app.schemas.job import JobCreateRequest, JobEstimateResponse, JobResponse
 from app.services import job_service
+from app.services.pricing import PRESET_HOURS, TIMEOUT_MULTIPLIER
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
-
-PRESET_HOURS = {"fast": 1, "balanced": 2, "quality": 4}
-TIMEOUT_MULTIPLIER = 2
 
 
 def _estimate_timeout_seconds(preset: str) -> int:

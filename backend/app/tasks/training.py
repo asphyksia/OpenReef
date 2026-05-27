@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.services.pricing import PRESET_HOURS, TIMEOUT_MULTIPLIER
 from app.tasks.celery_app import celery_app
 
 # Import all models so SQLAlchemy has the full schema
@@ -24,16 +25,6 @@ _MOCK = os.environ.get("OGPU_ADAPTER", "mock").lower() != "real"
 POLL_INTERVAL = 5 if _MOCK else 30
 MAX_RETRIES = 20 if _MOCK else 240
 MAX_REQUEUE = 2  # Max times a job can be requeued (3 total attempts)
-
-# Timeout multiplier: if job runs longer than estimated_hours * multiplier, fail it
-TIMEOUT_MULTIPLIER = 2.0
-
-# Estimated hours per preset (mirrors job_service.PRICING)
-PRESET_HOURS = {
-    "fast": 1,
-    "balanced": 2,
-    "quality": 4,
-}
 
 
 def _calculate_timeout(preset: str, param_count_b: int) -> int:

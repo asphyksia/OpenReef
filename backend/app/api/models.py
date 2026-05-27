@@ -6,14 +6,9 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.base_model import BaseModel as DBBaseModel
 from app.models.user import User
+from app.services.pricing import PRESET_DISPLAY
 
 router = APIRouter(prefix="/api/models", tags=["models"])
-
-PRESETS = {
-    "fast": {"label": "Fast", "description": "Quick training, fewer epochs. Good for testing.", "epochs": 1, "learning_rate": 2e-4},
-    "balanced": {"label": "Balanced", "description": "Good quality/price ratio.", "epochs": 2, "learning_rate": 1e-4},
-    "quality": {"label": "Quality", "description": "More epochs, best results.", "epochs": 3, "learning_rate": 5e-5},
-}
 
 
 @router.get("")
@@ -31,5 +26,5 @@ async def list_models(db: AsyncSession = Depends(get_db), user: User = Depends(g
             }
             for m in models
         ],
-        "presets": PRESETS,
+        "presets": PRESET_DISPLAY,
     }

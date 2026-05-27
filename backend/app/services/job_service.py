@@ -7,16 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.base_model import BaseModel as DBBaseModel
 from app.models.dataset import Dataset
 from app.models.job import Job
-from app.services import credit_service
-
-# Pricing: rough USD estimate per job based on model size and preset
-# In production this would query OGPU for real-time pricing.
-PRICING = {
-    # (param_count) -> base hourly rate * estimated hours by preset
-    "fast": {"hours": 1, "multiplier": 1.0},
-    "balanced": {"hours": 2, "multiplier": 1.0},
-    "quality": {"hours": 4, "multiplier": 1.0},
-}
+from app.services import credit_service, pricing
 
 HOURLY_RATE_7B = 0.50   # USD/hr estimate for 7B on OGPU
 HOURLY_RATE_13B = 1.00  # USD/hr estimate for 13B on OGPU
@@ -28,13 +19,12 @@ async def estimate_cost(db: AsyncSession, base_model_id: uuid.UUID, preset: str)
     if model is None or not model.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid base model")
 
-    if preset not in PRICING:
+    if preset not in pricing.PRESET_HOURS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid preset")
 
-    pricing = PRICING[preset]
+    est_hours = pricing.PRESET_HOURS[preset]
     hourly_rate = HOURLY_RATE_13B if model.param_count >= 13 else HOURLY_RATE_7B
-    base_cost = hourly_rate * pricing["hours"] * pricing["multiplier"]
-    return round(base_cost * BUFFER, 2)
+    return round(hourly_rate * est_hours * BUFFER, 2)
 
 
 async def has_active_job(db: AsyncSession, user_id: uuid.UUID) -> bool:
