@@ -1,11 +1,13 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import clear_auth_cookies, get_current_user, set_auth_cookies
+from app.dependencies import clear_auth_cookies, get_current_user
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest
 from app.schemas.user import UserResponse
@@ -13,9 +15,13 @@ from app.services import auth_service, credit_service
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+limiter = Limiter(key_func=get_remote_address)
+
 
 @router.post("/register", status_code=status.HTTP_200_OK)
+@limiter.limit("5/minute")
 async def register(
+    request: Request,
     body: RegisterRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
@@ -43,7 +49,9 @@ async def register(
 
 
 @router.post("/login", status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     body: LoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),

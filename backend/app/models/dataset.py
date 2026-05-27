@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -21,4 +21,4 @@ class Dataset(Base):
     validation_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, valid, invalid
     validation_errors: Mapped[list] = mapped_column(JSONB, default=list)
     r2_key: Mapped[str] = mapped_column(String(500), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.utcnow())
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))

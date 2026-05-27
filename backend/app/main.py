@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api import auth, datasets, health, jobs, models, payments, providers
 from app.config import settings
@@ -15,6 +17,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OpenReef API", version="0.1.0", lifespan=lifespan)
+
+# Rate limiter state
+app.state.limiter = getattr(auth, "limiter", None)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Parse allowed origins from config (comma-separated)
 _cors_origins = [o.strip() for o in settings.frontend_url.split(",") if o.strip()]

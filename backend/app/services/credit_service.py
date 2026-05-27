@@ -30,7 +30,7 @@ async def get_balance_for_update(db: DbSession, user_id: uuid.UUID) -> float:
     await db.execute(
         select(CreditLedger.id)
         .where(CreditLedger.user_id == user_id)
-        .with_for_update(skip_locked=True)
+        .with_for_update()
     )
     # Step 2: sum without for_update
     result = await db.execute(

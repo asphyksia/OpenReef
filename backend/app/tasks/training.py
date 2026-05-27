@@ -36,6 +36,14 @@ PRESET_HOURS = {
 }
 
 
+def _calculate_timeout(preset: str, param_count_b: int) -> int:
+    """Calculate timeout in seconds based on preset and model size."""
+    est_hours = PRESET_HOURS.get(preset, 2)
+    if param_count_b >= 13:
+        est_hours *= 2
+    return int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
+
+
 @celery_app.task(name="tasks.training.run_job")
 def run_job(job_id: str):
     """Run a fine-tuning job: publish to OGPU, then poll until completion."""
@@ -84,7 +92,7 @@ def run_job(job_id: str):
             except Exception as e:
                 job.status = "failed"
                 job.error_message = f"Failed to publish OGPU task: {str(e)}"
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 session.commit()
                 # Retry once after 60s
                 run_job.apply_async(args=[job_id], countdown=60)
@@ -94,7 +102,7 @@ def run_job(job_id: str):
         if not job.ogpu_task_address:
             job.status = "failed"
             job.error_message = "No OGPU task address found"
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
             session.commit()
             return
 
@@ -117,16 +125,12 @@ def run_job(job_id: str):
             # Track provider address from first attempter when job starts running
             if new_status == "running" and job.status != "running":
                 job.status = "running"
-                job.started_at = datetime.utcnow()
+                job.started_at = datetime.now(timezone.utc)
                 job.progress_pct = max(job.progress_pct, 10)
 
                 # Calculate dynamic timeout based on preset and model size
                 base_model = session.get(DBBaseModel, job.base_model_id)
-                est_hours = PRESET_HOURS.get(job.preset, 2)
-                # 13B+ models take longer (mirrors job_service pricing logic)
-                if base_model and base_model.param_count >= 13:
-                    est_hours *= 2
-                timeout_seconds = int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
+                timeout_seconds = _calculate_timeout(job.preset, base_model.param_count if base_model else 0)
                 job.status_detail = f"Provider running (timeout: {timeout_seconds // 3600}h estimated)"
                 if attempter_count > 0 and job.provider_address is None:
                     job.provider_address = status_info.get("attempter_address")
@@ -150,7 +154,7 @@ def run_job(job_id: str):
                     if not is_valid:
                         job.status = "failed"
                         job.error_message = f"Invalid output artifact: {reason}"
-                        job.completed_at = datetime.utcnow()
+                        job.completed_at = datetime.now(timezone.utc)
                         winner = status_info.get("winning_provider") or job.provider_address
                         if winner:
                             provider_service.record_provider_failure(session, winner)
@@ -162,7 +166,7 @@ def run_job(job_id: str):
                 job.status = "completed"
                 job.status_detail = "Training complete"
                 job.progress_pct = 100
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
 
                 # Track provider who completed the job — prefer winning_provider from SDK
                 winner = status_info.get("winning_provider") or job.provider_address
@@ -172,17 +176,14 @@ def run_job(job_id: str):
 
             # Dynamic timeout check: fail job if running too long
             if job.status == "running" and job.started_at:
-                elapsed = (datetime.utcnow() - job.started_at).total_seconds()
+                elapsed = (datetime.now(timezone.utc) - job.started_at).total_seconds()
                 base_model = session.get(DBBaseModel, job.base_model_id)
-                est_hours = PRESET_HOURS.get(job.preset, 2)
-                if base_model and base_model.param_count >= 13:
-                    est_hours *= 2
-                timeout_seconds = int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
+                timeout_seconds = _calculate_timeout(job.preset, base_model.param_count if base_model else 0)
 
                 if elapsed > timeout_seconds:
                     job.status = "failed"
                     job.error_message = f"Job timed out ({elapsed / 3600:.1f}h > {timeout_seconds / 3600:.1f}h limit)"
-                    job.completed_at = datetime.utcnow()
+                    job.completed_at = datetime.now(timezone.utc)
                     if job.provider_address:
                         provider_service.record_provider_failure(session, job.provider_address)
                     if job.estimated_cost and float(job.estimated_cost) > 0:
@@ -194,7 +195,7 @@ def run_job(job_id: str):
                 if job.requeue_count >= MAX_REQUEUE:
                     job.status = "failed"
                     job.error_message = f"OGPU task expired after {MAX_REQUEUE + 1} attempts"
-                    job.completed_at = datetime.utcnow()
+                    job.completed_at = datetime.now(timezone.utc)
                     if job.provider_address:
                         provider_service.record_provider_failure(session, job.provider_address)
                     if job.estimated_cost and float(job.estimated_cost) > 0:
@@ -212,7 +213,7 @@ def run_job(job_id: str):
 
             elif chain_status == "canceled" and job.status not in ("completed", "failed", "cancelled"):
                 job.status = "cancelled"
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 if job.provider_address:
                     provider_service.record_provider_failure(session, job.provider_address)
 

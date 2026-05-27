@@ -41,6 +41,6 @@ class Job(Base):
     requeue_count: Mapped[int] = mapped_column(Integer, default=0)
     provider_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_heartbeat: Mapped[datetime | None] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.utcnow())
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)

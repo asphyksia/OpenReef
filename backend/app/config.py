@@ -44,6 +44,8 @@ class Settings(BaseSettings):
             missing = []
             if self.jwt_secret == "dev-secret-change-me":
                 missing.append("JWT_SECRET")
+            if self.provider_api_secret == "dev-secret-change-me":
+                missing.append("PROVIDER_API_SECRET")
             if self.stripe_secret_key and "placeholder" in self.stripe_secret_key:
                 missing.append("STRIPE_SECRET_KEY (must be a real key)")
             if self.client_private_key == "":
