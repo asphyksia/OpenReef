@@ -140,10 +140,9 @@ def run_job(job_id: str):
                 if attempter_count > 0 and job.provider_address is None:
                     job.provider_address = status_info.get("attempter_address")
 
-            elif new_status == "completed" and job.status != "completed":
+            elif new_status == "completed" and job.status not in ("completed", "running"):
                 result = ogpu_service.get_task_result(job.ogpu_task_address)
                 if result and isinstance(result, dict):
-                    # Check if result has an R2 key (mock mode) or IPFS data (real mode)
                     if "output_key" in result:
                         # Mock mode: provider wrote directly to R2
                         job.output_r2_key = result["output_key"]
@@ -156,15 +155,15 @@ def run_job(job_id: str):
                             job.output_r2_key = adapter.retrieve_and_store_artifact(
                                 job.ogpu_task_address, output_r2_key
                             )
-                elif job.status == "running":
-                    # Result not ready yet — wait for next poll
-                    job.status = "completed"
-                    job.status_detail = "Awaiting artifact..."
-                    session.commit()
-                    return
 
-                # Validate the artifact before marking as completed
-                if job.output_r2_key:
+                    # If we still don't have an artifact, wait for next poll
+                    if not job.output_r2_key:
+                        job.status = "running"
+                        job.status_detail = "Awaiting artifact..."
+                        session.commit()
+                        return
+
+                    # Validate the artifact before marking as completed
                     is_valid, reason = ogpu_service.validate_artifact(job.output_r2_key)
                     if not is_valid:
                         job.status = "failed"
@@ -178,10 +177,10 @@ def run_job(job_id: str):
                         session.commit()
                         return
 
-                job.status = "completed"
-                job.status_detail = "Training complete"
-                job.progress_pct = 100
-                job.completed_at = datetime.now(timezone.utc)
+                    job.status = "completed"
+                    job.status_detail = "Training complete"
+                    job.progress_pct = 100
+                    job.completed_at = datetime.now(timezone.utc)
 
                 # Track provider who completed the job — prefer winning_provider from SDK
                 winner = status_info.get("winning_provider") or job.provider_address

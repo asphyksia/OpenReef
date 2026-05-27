@@ -1,8 +1,4 @@
-import os
-import secrets
-
 from fastapi import Cookie, Depends, Header, HTTPException, Request, Response, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,32 +10,6 @@ COOKIE_NAME = "token"
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "x-csrf-token"
 
-bearer_scheme = HTTPBearer()
-
-
-def set_auth_cookies(response: Response, csrf_token: str) -> None:
-    """Set httpOnly JWT cookie and CSRF cookie on the response."""
-    # JWT cookie — httpOnly, not accessible to JS
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value="",  # will be set by caller
-        http_only=True,
-        secure=settings.cookie_secure,
-        samesite="lax",
-        max_age=settings.cookie_max_age,
-        path="/",
-    )
-    # CSRF cookie — readable by JS for double-submit pattern
-    response.set_cookie(
-        key=CSRF_COOKIE_NAME,
-        value=csrf_token,
-        http_only=False,
-        secure=settings.cookie_secure,
-        samesite="lax",
-        max_age=settings.cookie_max_age,
-        path="/",
-    )
-
 
 def clear_auth_cookies(response: Response) -> None:
     """Clear auth cookies."""
@@ -49,7 +19,6 @@ def clear_auth_cookies(response: Response) -> None:
 
 async def get_current_user(
     request: Request,
-    response: Response,
     token: str | None = Cookie(None, alias=COOKIE_NAME),
     csrf_token: str | None = Header(None, alias=CSRF_HEADER_NAME),
     db: AsyncSession = Depends(get_db),
@@ -80,7 +49,6 @@ async def get_current_user(
 
     # CSRF check for state-changing requests
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-        # Get CSRF from cookie
         csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
         if not csrf_cookie or not csrf_token or csrf_cookie != csrf_token:
             raise HTTPException(
