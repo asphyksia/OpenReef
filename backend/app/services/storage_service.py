@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 _client = None
 _bucket = settings.r2_bucket_name
+# SSE only applies for real S3/R2 — not for local MinIO dev
+_use_sse = bool(settings.r2_endpoint_url) and "127.0.0.1" not in settings.r2_endpoint_url and "localhost" not in settings.r2_endpoint_url
 
 
 def _get_client():
@@ -53,35 +55,31 @@ def ensure_bucket():
 def upload_bytes(data: bytes, key: str, content_type: str = "application/octet-stream") -> str:
     """Upload bytes to storage. Returns the key."""
     client = _get_client()
-    client.put_object(
-        Bucket=_bucket,
-        Key=key,
-        Body=data,
-        ContentType=content_type,
-        ServerSideEncryption="AES256",
-    )
+    kwargs = {
+        "Bucket": _bucket,
+        "Key": key,
+        "Body": data,
+        "ContentType": content_type,
+    }
+    if _use_sse:
+        kwargs["ServerSideEncryption"] = "AES256"
+    client.put_object(**kwargs)
     logger.info("Uploaded %d bytes to %s", len(data), key)
     return key
 
 
 def upload_stream(file_like, key: str, content_type: str = "application/octet-stream") -> str:
-    client = _get_client()
-    client.put_object(
-        Bucket=_bucket,
-        Key=key,
-        Body=file_like,
-        ContentType=content_type,
-        ServerSideEncryption="AES256",
-    )
-    return keytype: str = "application/octet-stream") -> str:
     """Upload from a file-like object (streaming, no full read into memory)."""
     client = _get_client()
-    client.put_object(
-        Bucket=_bucket,
-        Key=key,
-        Body=file_like,
-        ContentType=content_type,
-    )
+    kwargs = {
+        "Bucket": _bucket,
+        "Key": key,
+        "Body": file_like,
+        "ContentType": content_type,
+    }
+    if _use_sse:
+        kwargs["ServerSideEncryption"] = "AES256"
+    client.put_object(**kwargs)
     logger.info("Uploaded stream to %s", key)
     return key
 

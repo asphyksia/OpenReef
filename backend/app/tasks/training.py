@@ -105,7 +105,7 @@ def run_job(job_id: str):
             status_map = {
                 "new": "queued",
                 "attempted": "running",
-                "responded": "completed",
+                "responded": "running",  # Provider responded but artifact not ready yet
                 "finalized": "completed",
                 "expired": "failed",
                 "canceled": "cancelled",
@@ -137,6 +137,12 @@ def run_job(job_id: str):
                     job.output_r2_key = result.get(
                         "output_key", f"models/{job.user_id}/{job.id}/adapter/"
                     )
+                elif job.status == "running":
+                    # Result not ready yet (e.g. responded but not finalized) — wait for next poll
+                    job.status = "completed"
+                    job.status_detail = "Awaiting artifact..."
+                    session.commit()
+                    return
 
                 # Validate the artifact before marking as completed
                 if job.output_r2_key:

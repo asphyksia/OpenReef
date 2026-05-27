@@ -100,13 +100,16 @@ class MockOGPUAdapter(OGPUAdapter):
         if elapsed < self.FINALIZED_AFTER:
             return None
 
-        output_key = f"models/mock/{task_id}/adapter/"
+        output_key = f"models/mock/{task_id}/adapter.safetensors"
 
         # Create a dummy artifact in MinIO so validation passes in dev
+        # Must be >= 1KB to pass validate_artifact()
         from app.services import storage_service
         try:
+            # 2KB of dummy data to exceed the 1KB minimum
+            dummy_data = b"\x00" * 2048
             storage_service.upload_bytes(
-                data=b"mock-lora-adapter-artifact-content-for-validation-testing",
+                data=dummy_data,
                 key=output_key,
                 content_type="application/octet-stream",
             )
