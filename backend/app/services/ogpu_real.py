@@ -7,9 +7,11 @@ Uses the ogpu Python SDK to interact with the OpenGPU Network:
 - retrieve results from IPFS
 """
 
+import logging
 import os
 import time
 
+import requests
 from ogpu.chain import ChainConfig, ChainId
 from ogpu.client import publish_source, publish_task, cancel_task as cancel_task_sdk
 from ogpu.protocol import Task, vault
@@ -32,9 +34,17 @@ from ogpu.types import (
     IPFSFetchError,
 )
 
+logger = logging.getLogger(__name__)
 
 _OGPU_TESTNET = os.environ.get("OGPU_USE_TESTNET", "true").lower() == "true"
 _FINETUNE_SOURCE_ADDRESS = os.environ.get("OGPU_SOURCE_ADDRESS", "")
+
+# URL to the hosted docker-compose file for the OpenReef Axolotl source
+# Must be a public HTTPS URL — providers fetch this to set up their container
+_COMPOSE_URL = os.environ.get(
+    "OGPU_COMPOSE_URL",
+    "https://raw.githubusercontent.com/OpenReef/main/docker-compose/nvidia.yml",
+)
 
 
 def _ensure_chain():
@@ -52,11 +62,15 @@ class RealOGPUAdapter(OGPUAdapter):
 
         _ensure_chain()
 
+        # Check if we already published and cached the address in this process
+        if hasattr(self, "_cached_source_address") and self._cached_source_address:
+            return self._cached_source_address
+
         source_info = SourceInfo(
             name="OpenReef-FineTune",
             description="Axolotl fine-tuning for LoRA/QLoRA adapters",
             imageEnvs=ImageEnvironments(
-                nvidia="docker-compose-nvidia.yml"
+                nvidia=_COMPOSE_URL,
             ),
             deliveryMethod=DeliveryMethod.FIRST_RESPONSE,
             minPayment=0,
@@ -65,21 +79,27 @@ class RealOGPUAdapter(OGPUAdapter):
         )
 
         source = publish_source(source_info)
+        self._cached_source_address = source.address
+        logger.info(
+            "Published new source on-chain: %s — set OGPU_SOURCE_ADDRESS=%s to reuse",
+            source.address, source.address,
+        )
         return source.address
 
     def publish_task(self, source_address: str, config: dict, payment: float) -> str:
         _ensure_chain()
 
-        # Pre-flight: verify vault has enough balance
         try:
             vault_balance = vault.get_balance_of(source_address)
             if vault_balance < int(payment):
                 raise InsufficientBalanceError(
                     f"Vault balance {vault_balance} wei < required payment {payment} wei"
                 )
-        except Exception:
-            # If we can't check balance, proceed anyway (vault may not exist for this address)
-            pass
+        except InsufficientBalanceError:
+            raise
+        except Exception as e:
+            # Log the failure but proceed — vault contract may not exist
+            logger.warning("Could not verify vault balance: %s", e)
 
         task_info = TaskInfo(
             source=source_address,
@@ -104,7 +124,6 @@ class RealOGPUAdapter(OGPUAdapter):
             raise RuntimeError("Missing OGPU private key for signing") from e
 
     def get_task_status(self, task_id: str) -> dict:
-        """Use task.snapshot() for a single batch RPC call."""
         _ensure_chain()
         task = Task(task_id)
         snap = task.snapshot()
@@ -136,16 +155,62 @@ class RealOGPUAdapter(OGPUAdapter):
             return None
         return response.fetch_data()
 
+    def retrieve_and_store_artifact(self, task_id: str, output_r2_key: str) -> str | None:
+        """Bridge: download the model artifact from IPFS and upload to R2.
+
+        The provider uploads their result to IPFS via the OGPU Response mechanism.
+        We fetch the IPFS JSON, extract the artifact URL (base64 or IPFS gateway URL),
+        download the binary, and upload it to our R2 bucket.
+
+        Returns the R2 key if successful, None if the artifact couldn't be retrieved.
+        """
+        result = self.get_task_result(task_id)
+        if not result or not isinstance(result, dict):
+            logger.warning("No result data for task %s", task_id)
+            return None
+
+        # The provider's response JSON may contain the artifact in different formats:
+        # 1. "adapter_base64" — base64-encoded safetensors (for small LoRA adapters)
+        # 2. "adapter_url" — IPFS gateway URL to the binary
+        # 3. "output_key" — legacy R2 key (for backward compat / mock mode)
+        adapter_base64 = result.get("adapter_base64")
+        adapter_url = result.get("adapter_url")
+
+        artifact_bytes = None
+
+        if adapter_base64:
+            import base64
+            try:
+                artifact_bytes = base64.b64decode(adapter_base64)
+            except Exception as e:
+                logger.error("Failed to decode adapter_base64: %s", e)
+                return None
+        elif adapter_url:
+            try:
+                resp = requests.get(adapter_url, timeout=300)
+                resp.raise_for_status()
+                artifact_bytes = resp.content
+            except Exception as e:
+                logger.error("Failed to download artifact from IPFS: %s", e)
+                return None
+
+        if not artifact_bytes:
+            logger.warning("No artifact found in result for task %s", task_id)
+            return None
+
+        # Upload to R2
+        from app.services import storage_service
+        storage_service.upload_bytes(artifact_bytes, output_r2_key)
+        logger.info("Stored artifact at %s (%d bytes)", output_r2_key, len(artifact_bytes))
+        return output_r2_key
+
     def cancel_task(self, task_id: str) -> None:
         _ensure_chain()
         try:
             receipt = cancel_task_sdk(task_id)
-            # receipt.tx_hash and receipt.gas_used available for audit
         except (TaskAlreadyFinalizedError, SourceInactiveError):
-            pass  # Task already done or source inactive
+            pass
         except (MissingSignerError, IPFSGatewayError) as e:
-            # Log but don't fail — cancel is best-effort
-            import logging
-            logging.getLogger(__name__).warning("Cancel failed: %s", e)
+            logger.warning("Cancel failed: %s", e)
         except Exception:
-            pass  # Task may already be finalized
+            pass

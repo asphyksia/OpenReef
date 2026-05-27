@@ -49,6 +49,7 @@ def run_job(job_id: str):
     """Run a fine-tuning job: publish to OGPU, then poll until completion."""
     import uuid
 
+    from app.models.dataset import Dataset
     from app.models.job import Job
     from app.models.base_model import BaseModel as DBBaseModel
     from app.services import credit_service, ogpu_service, provider_service
@@ -65,7 +66,11 @@ def run_job(job_id: str):
                 if base_model is None:
                     raise ValueError(f"Base model {job.base_model_id} not found")
 
-                dataset_url = f"r2://{job.dataset_id}"
+                dataset = session.get(Dataset, job.dataset_id)
+                if dataset is None:
+                    raise ValueError(f"Dataset {job.dataset_id} not found")
+                dataset_url = ogpu_service.resolve_dataset_url(dataset.r2_key)
+
                 axolotl = ogpu_service.AxolotlConfig(
                     base_model=base_model.name,
                     dataset_url=dataset_url,
@@ -138,11 +143,21 @@ def run_job(job_id: str):
             elif new_status == "completed" and job.status != "completed":
                 result = ogpu_service.get_task_result(job.ogpu_task_address)
                 if result and isinstance(result, dict):
-                    job.output_r2_key = result.get(
-                        "output_key", f"models/{job.user_id}/{job.id}/adapter/"
-                    )
+                    # Check if result has an R2 key (mock mode) or IPFS data (real mode)
+                    if "output_key" in result:
+                        # Mock mode: provider wrote directly to R2
+                        job.output_r2_key = result["output_key"]
+                    else:
+                        # Real mode: bridge IPFS → R2
+                        output_r2_key = f"models/{job.user_id}/{job.id}/adapter.safetensors"
+                        from app.services import ogpu_service as _ogpu
+                        adapter = _ogpu.get_adapter()
+                        if hasattr(adapter, "retrieve_and_store_artifact"):
+                            job.output_r2_key = adapter.retrieve_and_store_artifact(
+                                job.ogpu_task_address, output_r2_key
+                            )
                 elif job.status == "running":
-                    # Result not ready yet (e.g. responded but not finalized) — wait for next poll
+                    # Result not ready yet — wait for next poll
                     job.status = "completed"
                     job.status_detail = "Awaiting artifact..."
                     session.commit()
