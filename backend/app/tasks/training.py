@@ -131,7 +131,7 @@ def run_job(job_id: str):
                 if attempter_count > 0 and job.provider_address is None:
                     job.provider_address = status_info.get("attempter_address")
 
-            elif new_status == "completed" and job.status not in ("completed", "running"):
+            elif new_status == "completed" and job.status not in ("completed", "cancelled"):
                 result = ogpu_service.get_task_result(job.ogpu_task_address)
                 if result and isinstance(result, dict):
                     if "output_key" in result:
