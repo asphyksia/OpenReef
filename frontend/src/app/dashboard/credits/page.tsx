@@ -15,8 +15,12 @@ export default function CreditsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    getBalance().then(setBalance).catch(console.error);
-    // Detect dev mode: if checkout fails it means we're not configured
+    getBalance()
+      .then(setBalance)
+      .catch((err) => {
+        console.error("getBalance failed:", err);
+        setError(err.message || "Failed to load balance");
+      });
   }, []);
 
   async function handleCheckout(amount: number) {

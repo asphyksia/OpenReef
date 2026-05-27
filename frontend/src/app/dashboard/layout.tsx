@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getMe } from "@/lib/api";
+import { getMe, logout } from "@/lib/api";
 import type { User } from "@/types";
 
 const navItems = [
@@ -41,8 +41,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </span>
           <button
             onClick={() => {
-              localStorage.removeItem("token");
-              router.push("/login");
+              logout().finally(() => router.push("/login"));
             }}
             className="text-sm text-muted-foreground hover:text-foreground"
           >

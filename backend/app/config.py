@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
     api_url: str = "http://localhost:8000"
 
+    # Cookie settings
+    cookie_secure: bool = False  # True in production (requires HTTPS)
+    cookie_max_age: int = 7 * 24 * 3600  # 7 days
+
     model_config = {"env_file": ".env"}
 
     def validate_production(self) -> None:

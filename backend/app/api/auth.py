@@ -1,19 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import secrets
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import clear_auth_cookies, get_current_user, set_auth_cookies
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import LoginRequest, RegisterRequest
 from app.schemas.user import UserResponse
 from app.services import auth_service, credit_service
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=TokenResponse)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+@router.post("/register", status_code=status.HTTP_200_OK)
+async def register(
+    body: RegisterRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
@@ -24,18 +30,46 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     await db.refresh(user)
 
     token = auth_service.create_access_token(str(user.id))
-    return TokenResponse(access_token=token)
+    csrf_token = secrets.token_hex(32)
+    response.set_cookie(
+        key="token", value=token, httponly=True, secure=False,
+        samesite="lax", max_age=7 * 24 * 3600, path="/",
+    )
+    response.set_cookie(
+        key="csrf_token", value=csrf_token, httponly=False,
+        secure=False, samesite="lax", max_age=7 * 24 * 3600, path="/",
+    )
+    return {"message": "registered"}
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+@router.post("/login", status_code=status.HTTP_200_OK)
+async def login(
+    body: LoginRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if user is None or not auth_service.verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
     token = auth_service.create_access_token(str(user.id))
-    return TokenResponse(access_token=token)
+    csrf_token = secrets.token_hex(32)
+    response.set_cookie(
+        key="token", value=token, httponly=True, secure=False,
+        samesite="lax", max_age=7 * 24 * 3600, path="/",
+    )
+    response.set_cookie(
+        key="csrf_token", value=csrf_token, httponly=False,
+        secure=False, samesite="lax", max_age=7 * 24 * 3600, path="/",
+    )
+    return {"message": "ok"}
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(response: Response):
+    clear_auth_cookies(response)
+    return {"message": "logged out"}
 
 
 @router.get("/me", response_model=UserResponse)

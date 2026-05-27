@@ -10,7 +10,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.models.credit_ledger import ProcessedEvent
-from app.schemas.payment import BalanceResponse, CheckoutSessionRequest
+from app.schemas.payment import BalanceResponse, CheckoutSessionRequest, DevAddCreditsRequest
 from app.services import credit_service
 
 logger = logging.getLogger(__name__)
@@ -58,14 +58,14 @@ async def create_checkout_session(
 
 @router.post("/dev-add-credits")
 async def dev_add_credits(
-    amount: float,
+    body: DevAddCreditsRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Development-only: add credits without Stripe. Only available when OGPU_ADAPTER=mock."""
     if settings.ogpu_adapter != "mock":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dev credits disabled in production")
-    await credit_service.add_credits(db, user.id, amount, "Dev credits (MVP testing)")
+    await credit_service.add_credits(db, user.id, body.amount, "Dev credits (MVP testing)")
     await db.commit()
     balance = await credit_service.get_balance(db, user.id)
     return {"balance": balance}

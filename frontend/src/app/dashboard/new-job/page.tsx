@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { listDatasets, getModels, createJob } from "@/lib/api";
+import { listDatasets, listModels, createJob } from "@/lib/api";
 import type { Dataset, ModelsResponse } from "@/types";
 
 export default function NewJobPage() {
@@ -19,7 +19,7 @@ export default function NewJobPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    Promise.all([listDatasets(), getModels()])
+    Promise.all([listDatasets(), listModels()])
       .then(([d, m]) => {
         setDatasets(d);
         setModelsData(m);
