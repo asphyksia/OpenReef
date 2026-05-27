@@ -32,7 +32,28 @@ async def get_job(
     job = await db.get(Job, job_id)
     if job is None or job.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    return _to_response(job)
+
+    download_url = None
+    if job.output_r2_key:
+        from app.services import storage_service
+        download_url = storage_service.presigned_url(job.output_r2_key)
+    return _to_response(job, download_url=download_url)
+
+
+@router.get("/{job_id}/download", response_model=JobResponse)
+async def download_job(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    job = await db.get(Job, job_id)
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if not job.output_r2_key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No artifact available for this job")
+    from app.services import storage_service
+    download_url = storage_service.presigned_url(job.output_r2_key)
+    return _to_response(job, download_url=download_url)
 
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
@@ -115,7 +136,7 @@ async def cancel_job(
     return _to_response(job)
 
 
-def _to_response(j: Job) -> JobResponse:
+def _to_response(j: Job, *, download_url: str | None = None) -> JobResponse:
     return JobResponse(
         id=j.id,
         dataset_id=j.dataset_id,
@@ -131,6 +152,7 @@ def _to_response(j: Job) -> JobResponse:
         ogpu_task_address=j.ogpu_task_address,
         requeue_count=j.requeue_count,
         provider_address=j.provider_address,
+        download_url=download_url,
         created_at=j.created_at.isoformat() if j.created_at else "",
         started_at=j.started_at.isoformat() if j.started_at else None,
         completed_at=j.completed_at.isoformat() if j.completed_at else None,

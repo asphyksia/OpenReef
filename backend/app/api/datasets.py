@@ -30,24 +30,37 @@ async def upload_dataset(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    content = await file.read()
+    # Check size from headers before reading body
+    if file.size is not None and file.size > dataset_service.MAX_SIZE_BYTES:
+        return DatasetResponse(
+            id=uuid.uuid4(), name=name or "", filename=file.filename or "unknown",
+            format=_detect_format(file.filename or ""), size_bytes=file.size,
+            row_count=None, validation_status="invalid",
+            validation_errors=[f"Dataset exceeds maximum size of {dataset_service.MAX_SIZE_BYTES / (1024*1024):.0f}MB"],
+            created_at="", download_url=None,
+        )
+
     filename = file.filename or "unknown"
     fmt = _detect_format(filename)
 
-    row_count, errors = dataset_service.validate_dataset(content, fmt)
+    # Validate from stream (reads line-by-line, not full file)
+    row_count, errors = dataset_service.validate_dataset_stream(file.file, fmt)
 
     if errors:
         return DatasetResponse(
             id=uuid.uuid4(), name=name or filename, filename=filename,
-            format=fmt, size_bytes=len(content), row_count=None,
+            format=fmt, size_bytes=file.size or 0, row_count=None,
             validation_status="invalid", validation_errors=errors,
             created_at="", download_url=None,
         )
 
-    # Upload to object storage (MinIO/R2)
+    # Stream to object storage (no full read into memory)
     r2_key = f"datasets/{user.id}/{uuid.uuid4()}/{filename}"
     content_type = "text/csv" if fmt == "csv" else "application/octet-stream"
-    storage_service.upload_bytes(content, r2_key, content_type=content_type)
+    storage_service.upload_stream(file.file, r2_key, content_type=content_type)
+
+    # We need size_bytes for the response — use size hint from file object
+    size = file.size or 0
 
     download_url = storage_service.presigned_url(r2_key)
 
@@ -56,7 +69,7 @@ async def upload_dataset(
         name=name or filename,
         filename=filename,
         format=fmt,
-        size_bytes=len(content),
+        size_bytes=size,
         row_count=row_count,
         validation_status="valid",
         validation_errors=[],

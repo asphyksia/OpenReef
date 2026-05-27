@@ -156,6 +156,22 @@ export default function JobDetailPage() {
             <span className="text-sm">{job.completed_at.slice(0, 19)}</span>
           </div>
         )}
+        {job.download_url && (
+          <div className="p-4">
+            <span className="text-sm text-muted-foreground block mb-2">Download Artifact</span>
+            <a
+              href={job.download_url}
+              download
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              Download Model
+            </a>
+            <p className="text-xs text-muted-foreground mt-2">
+              Download link expires in 1 hour
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-3">

@@ -58,12 +58,22 @@ def upload_bytes(data: bytes, key: str, content_type: str = "application/octet-s
         Key=key,
         Body=data,
         ContentType=content_type,
+        ServerSideEncryption="AES256",
     )
     logger.info("Uploaded %d bytes to %s", len(data), key)
     return key
 
 
 def upload_stream(file_like, key: str, content_type: str = "application/octet-stream") -> str:
+    client = _get_client()
+    client.put_object(
+        Bucket=_bucket,
+        Key=key,
+        Body=file_like,
+        ContentType=content_type,
+        ServerSideEncryption="AES256",
+    )
+    return keytype: str = "application/octet-stream") -> str:
     """Upload from a file-like object (streaming, no full read into memory)."""
     client = _get_client()
     client.put_object(

@@ -30,6 +30,9 @@ export interface Job {
   progress_pct: number;
   error_message: string | null;
   ogpu_task_address: string | null;
+  requeue_count: number;
+  provider_address: string | null;
+  download_url: string | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;

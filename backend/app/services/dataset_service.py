@@ -1,7 +1,7 @@
 import csv
 import io
 import json
-
+from typing import BinaryIO
 
 MAX_SIZE_BYTES = 500 * 1024 * 1024  # 500 MB
 MAX_ROWS = 100_000
@@ -9,7 +9,10 @@ MAX_TOKENS_PER_EXAMPLE = 4096  # rough estimate: ~4 chars per token
 
 
 def validate_dataset(content: bytes, fmt: str) -> tuple[int, list[str]]:
-    """Validate dataset content. Returns (row_count, errors)."""
+    """Validate dataset from bytes. Returns (row_count, errors).
+
+    Kept for backward compat; prefer validate_dataset_stream for large files.
+    """
     errors: list[str] = []
 
     if len(content) > MAX_SIZE_BYTES:
@@ -24,9 +27,28 @@ def validate_dataset(content: bytes, fmt: str) -> tuple[int, list[str]]:
     if fmt == "jsonl":
         return _validate_jsonl(text, errors)
     elif fmt == "csv":
-        return _validate_csv(text, errors)
+        return _validate_csv_text(text, errors)
     elif fmt == "txt":
         return _validate_txt(text, errors)
+    else:
+        errors.append(f"Unsupported format: {fmt}")
+        return (0, errors)
+
+
+def validate_dataset_stream(file: BinaryIO, fmt: str) -> tuple[int, list[str]]:
+    """Validate dataset from a file-like stream (streaming, no full read).
+
+    Reads line-by-line for validation, then seeks back to start.
+    Returns (row_count, errors).
+    """
+    errors: list[str] = []
+
+    if fmt == "jsonl":
+        return _validate_jsonl_stream(file, errors)
+    elif fmt == "csv":
+        return _validate_csv_stream(file, errors)
+    elif fmt == "txt":
+        return _validate_txt_stream(file, errors)
     else:
         errors.append(f"Unsupported format: {fmt}")
         return (0, errors)
@@ -59,7 +81,49 @@ def _validate_jsonl(text: str, errors: list[str]) -> tuple[int, list[str]]:
     return (len(lines), errors)
 
 
-def _validate_csv(text: str, errors: list[str]) -> tuple[int, list[str]]:
+def _validate_jsonl_stream(file: BinaryIO, errors: list[str]) -> tuple[int, list[str]]:
+    """Validate JSONL by streaming, counting rows without loading full file."""
+    first_lines_ok = True
+    row_count = 0
+
+    for line_num, raw_line in enumerate(file, start=1):
+        line = raw_line.decode("utf-8").strip()
+        if not line:
+            continue
+        row_count += 1
+
+        if row_count > MAX_ROWS:
+            errors.append(f"Dataset has more than {MAX_ROWS} rows")
+            break
+
+        # Check first 5 lines for structure
+        if first_lines_ok and line_num <= 5:
+            try:
+                obj = json.loads(line)
+                if not isinstance(obj, dict):
+                    errors.append(f"Line {line_num}: expected a JSON object")
+                    first_lines_ok = False
+                    break
+                if len(obj) < 1:
+                    errors.append(f"Line {line_num}: object is empty")
+                    first_lines_ok = False
+                    break
+            except json.JSONDecodeError as e:
+                errors.append(f"Line {line_num}: invalid JSON - {e}")
+                first_lines_ok = False
+                break
+
+    if row_count == 0:
+        errors.append("File is empty")
+
+    if errors:
+        file.seek(0)
+        return (0, errors)
+    file.seek(0)
+    return (row_count, errors)
+
+
+def _validate_csv_text(text: str, errors: list[str]) -> tuple[int, list[str]]:
     reader = csv.reader(io.StringIO(text))
     rows = list(reader)
     if not rows:
@@ -72,6 +136,40 @@ def _validate_csv(text: str, errors: list[str]) -> tuple[int, list[str]]:
     if errors:
         return (0, errors)
     return (len(rows) - 1, errors)  # subtract header
+
+
+def _validate_csv_stream(file: BinaryIO, errors: list[str]) -> tuple[int, list[str]]:
+    """Validate CSV by streaming, counting rows without loading full file."""
+    # Read first line to check header has columns
+    first_line = file.readline()
+    if not first_line:
+        errors.append("File is empty")
+        file.seek(0)
+        return (0, errors)
+
+    first_row_reader = csv.reader(io.StringIO(first_line.decode("utf-8")))
+    first_row = next(first_row_reader, [])
+    if len(first_row) < 1:
+        errors.append("CSV has no columns")
+        file.seek(0)
+        return (0, errors)
+
+    # Count remaining data rows
+    row_count = 0
+    for raw_line in file:
+        line = raw_line.decode("utf-8").rstrip("\r\n")
+        if not line:
+            continue
+        row_count += 1
+        if row_count > MAX_ROWS:
+            errors.append(f"Dataset has more than {MAX_ROWS} rows")
+            break
+
+    if row_count == 0:
+        errors.append("File is empty")
+
+    file.seek(0)
+    return (row_count, errors)
 
 
 def _validate_txt(text: str, errors: list[str]) -> tuple[int, list[str]]:
@@ -87,3 +185,32 @@ def _validate_txt(text: str, errors: list[str]) -> tuple[int, list[str]]:
     if errors:
         return (0, errors)
     return (len(lines), errors)
+
+
+def _validate_txt_stream(file: BinaryIO, errors: list[str]) -> tuple[int, list[str]]:
+    """Validate TXT by streaming, counting lines without loading full file."""
+    row_count = 0
+    first_line_checked = False
+
+    for _ in file:
+        raw_line = _
+        line = raw_line.decode("utf-8").rstrip("\n\r")
+        if not line:
+            continue
+        row_count += 1
+
+        if row_count > MAX_ROWS:
+            errors.append(f"Dataset has more than {MAX_ROWS} rows")
+            break
+
+        if not first_line_checked:
+            if len(line) > MAX_TOKENS_PER_EXAMPLE * 4:
+                errors.append(f"Line 1: exceeds estimated token limit")
+                break
+            first_line_checked = True
+
+    if errors:
+        file.seek(0)
+        return (0, errors)
+    file.seek(0)
+    return (row_count, errors)

@@ -24,6 +24,7 @@ class JobResponse(BaseModel):
     ogpu_task_address: str | None
     requeue_count: int
     provider_address: str | None
+    download_url: str | None = None
     created_at: str
     started_at: str | None
     completed_at: str | None
