@@ -1,5 +1,6 @@
 """Celery task for OGPU job lifecycle: publish + poll until terminal state."""
 
+import logging
 import os
 from datetime import datetime, timezone
 
@@ -7,8 +8,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.services.pricing import PRESET_HOURS, TIMEOUT_MULTIPLIER
+from app.services.pricing import MAX_REQUEUE, PRESET_HOURS, TIMEOUT_MULTIPLIER
 from app.tasks.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
 
 # Import all models so SQLAlchemy has the full schema
 from app.models import user, dataset, job, credit_ledger, base_model, provider  # noqa: F401
@@ -19,12 +22,19 @@ def _build_sync_url():
     url = settings.database_url
     return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
 
-sync_engine = create_engine(_build_sync_url())
+sync_engine = None
+
+def _get_sync_engine():
+    """Lazy init to avoid crash at import time if DB is not ready."""
+    global sync_engine
+    if sync_engine is None:
+        sync_engine = create_engine(_build_sync_url())
+    return sync_engine
 
 _MOCK = os.environ.get("OGPU_ADAPTER", "mock").lower() != "real"
 POLL_INTERVAL = 5 if _MOCK else 30
 MAX_RETRIES = 20 if _MOCK else 240
-MAX_REQUEUE = 2  # Max times a job can be requeued (3 total attempts)
+MAX_PUBLISH_RETRIES = 1  # Max retries if OGPU task publish fails
 
 
 def _calculate_timeout(preset: str, param_count_b: int) -> int:
@@ -35,8 +45,8 @@ def _calculate_timeout(preset: str, param_count_b: int) -> int:
     return int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
 
 
-@celery_app.task(name="tasks.training.run_job")
-def run_job(job_id: str):
+@celery_app.task(name="tasks.training.run_job", bind=True, max_retries=MAX_RETRIES)
+def run_job(self, job_id: str):
     """Run a fine-tuning job: publish to OGPU, then poll until completion."""
     import uuid
 
@@ -45,7 +55,7 @@ def run_job(job_id: str):
     from app.models.base_model import BaseModel as DBBaseModel
     from app.services import credit_service, ogpu_service, provider_service
 
-    with Session(sync_engine) as session:
+    with Session(_get_sync_engine()) as session:
         job = session.get(Job, uuid.UUID(job_id))
         if job is None:
             return
@@ -90,8 +100,13 @@ def run_job(job_id: str):
                 job.error_message = f"Failed to publish OGPU task: {str(e)}"
                 job.completed_at = datetime.now(timezone.utc)
                 session.commit()
-                # Retry once after 60s
-                run_job.apply_async(args=[job_id], countdown=60)
+                if job.requeue_count < MAX_PUBLISH_RETRIES:
+                    job.requeue_count += 1
+                    job.status = "pending"
+                    job.error_message = None
+                    job.completed_at = None
+                    session.commit()
+                    run_job.apply_async(args=[job_id], countdown=60)
                 return
 
         # Phase 2: All executions (including retries) — poll status
@@ -113,6 +128,7 @@ def run_job(job_id: str):
                 "finalized": "completed",
                 "expired": "failed",
                 "canceled": "cancelled",
+                "checkpointing": "checkpointing",  # Provider saving checkpoint, still running
             }
 
             new_status = status_map.get(chain_status, job.status)
@@ -229,6 +245,18 @@ def run_job(job_id: str):
                 run_job.apply_async(args=[job_id], countdown=POLL_INTERVAL)
                 return
 
-        except Exception:
-            run_job.apply_async(args=[job_id], countdown=POLL_INTERVAL)
-            return
+        except Exception as e:
+            logger.exception("Poll error for job %s (attempt %d/%d)", job_id, self.request.retries + 1, MAX_RETRIES)
+            if self.request.retries >= MAX_RETRIES - 1:
+                # Max retries reached — mark job as failed
+                with Session(_get_sync_engine()) as fail_session:
+                    import uuid
+                    from app.models.job import Job
+                    failed_job = fail_session.get(Job, uuid.UUID(job_id))
+                    if failed_job and failed_job.status not in ("completed", "failed", "cancelled"):
+                        failed_job.status = "failed"
+                        failed_job.error_message = f"Polling failed after {MAX_RETRIES} retries: {e}"
+                        failed_job.completed_at = datetime.now(timezone.utc)
+                        fail_session.commit()
+                return
+            raise self.retry(countdown=POLL_INTERVAL, exc=e)

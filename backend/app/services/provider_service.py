@@ -1,7 +1,5 @@
 from datetime import datetime, timezone
 
-_UTC_NOW = lambda: datetime.now(timezone.utc)
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,15 +7,19 @@ from app.models.job import Job
 from app.models.provider import Provider
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def ensure_provider(session: Session, address: str) -> Provider:
     """Upsert provider record, ensuring it exists with last_active set."""
     provider = session.get(Provider, address)
     if provider is None:
-        provider = Provider(address=address, last_active=_UTC_NOW())
+        provider = Provider(address=address, last_active=_utc_now())
         session.add(provider)
         session.flush()
     else:
-        provider.last_active = _UTC_NOW()
+        provider.last_active = _utc_now()
     return provider
 
 
@@ -26,7 +28,7 @@ def record_heartbeat(session: Session, address: str, job_id) -> None:
     provider = ensure_provider(session, address)
     job = session.get(Job, job_id)
     if job is not None:
-        job.last_heartbeat = _UTC_NOW()
+        job.last_heartbeat = _utc_now()
         if job.provider_address is None:
             job.provider_address = address
 
@@ -39,7 +41,7 @@ def record_provider_cancel(session: Session, job: Job) -> None:
     if job.provider_address:
         provider = ensure_provider(session, job.provider_address)
         provider.abandoned_count += 1
-        provider.last_abandoned_at = _UTC_NOW()
+        provider.last_abandoned_at = _utc_now()
 
 
 def record_provider_completion(session: Session, address: str) -> None:

@@ -5,6 +5,7 @@ R2 (prod), or any S3-compatible backend.
 """
 
 import logging
+import threading
 from io import BytesIO
 
 import boto3
@@ -16,24 +17,27 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _client = None
+_client_lock = threading.Lock()
 _bucket = settings.r2_bucket_name
 # SSE only applies for real S3/R2 — not for local MinIO dev
 _use_sse = bool(settings.r2_endpoint_url) and "127.0.0.1" not in settings.r2_endpoint_url and "localhost" not in settings.r2_endpoint_url
 
 
 def _get_client():
-    """Lazy singleton boto3 S3 client."""
+    """Thread-safe lazy singleton boto3 S3 client."""
     global _client
     if _client is None:
-        session = boto3.Session(
-            aws_access_key_id=settings.r2_access_key_id,
-            aws_secret_access_key=settings.r2_secret_access_key,
-        )
-        _client = session.client(
-            "s3",
-            endpoint_url=settings.r2_endpoint_url or None,
-            config=Config(signature_version="s3v4"),
-        )
+        with _client_lock:
+            if _client is None:
+                session = boto3.Session(
+                    aws_access_key_id=settings.r2_access_key_id,
+                    aws_secret_access_key=settings.r2_secret_access_key,
+                )
+                _client = session.client(
+                    "s3",
+                    endpoint_url=settings.r2_endpoint_url or None,
+                    config=Config(signature_version="s3v4"),
+                )
     return _client
 
 

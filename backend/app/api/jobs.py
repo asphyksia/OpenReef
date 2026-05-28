@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -21,13 +22,42 @@ def _estimate_timeout_seconds(preset: str) -> int:
     return int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
 
 
+def _compute_progress(job: Job) -> tuple[int, str | None]:
+    """Calculate dynamic progress percentage and ETA for running jobs.
+
+    Returns (progress_pct, estimated_completion_iso).
+    """
+    progress_pct = job.progress_pct
+    estimated_completion = None
+
+    if job.status == "running" and job.started_at:
+        timeout_seconds = _estimate_timeout_seconds(job.preset)
+        now = datetime.now(timezone.utc)
+        started = job.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        started = started.astimezone(timezone.utc)
+
+        elapsed = (now - started).total_seconds()
+        if elapsed > 0 and timeout_seconds > 0:
+            progress_pct = min(int((elapsed / timeout_seconds) * 90 + 10), 99)
+            eta = started + timedelta(seconds=timeout_seconds)
+            estimated_completion = eta.isoformat()
+
+    return progress_pct, estimated_completion
+
+
 @router.get("", response_model=list[JobResponse])
 async def list_jobs(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Job).where(Job.user_id == user.id).order_by(Job.created_at.desc())
     )
     jobs = result.scalars().all()
-    return [_to_response(j) for j in jobs]
+    responses = []
+    for j in jobs:
+        progress_pct, estimated_completion = _compute_progress(j)
+        responses.append(_to_response(j, progress_pct=progress_pct, estimated_completion=estimated_completion))
+    return responses
 
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -45,18 +75,7 @@ async def get_job(
         from app.services import storage_service
         download_url = storage_service.presigned_url(job.output_r2_key)
 
-    # Calculate dynamic progress and ETA for running jobs
-    progress_pct = job.progress_pct
-    estimated_completion = None
-    if job.status == "running" and job.started_at:
-        timeout_seconds = _estimate_timeout_seconds(job.preset)
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        started = job.started_at.replace(tzinfo=timezone.utc) if job.started_at.tzinfo is None else job.started_at
-        elapsed = (now - started).total_seconds()
-        if elapsed > 0 and timeout_seconds > 0:
-            progress_pct = min(int((elapsed / timeout_seconds) * 90 + 10), 99)
-            estimated_completion = (started + __import__("datetime", fromlist=["timedelta"]).timedelta(seconds=timeout_seconds)).isoformat()
+    progress_pct, estimated_completion = _compute_progress(job)
 
     return _to_response(job, download_url=download_url,
                         progress_pct=progress_pct,
@@ -76,7 +95,8 @@ async def download_job(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No artifact available for this job")
     from app.services import storage_service
     download_url = storage_service.presigned_url(job.output_r2_key)
-    return _to_response(job, download_url=download_url)
+    progress_pct, estimated_completion = _compute_progress(job)
+    return _to_response(job, download_url=download_url, progress_pct=progress_pct, estimated_completion=estimated_completion)
 
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)

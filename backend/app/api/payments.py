@@ -2,6 +2,8 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
+limiter = Limiter(key_func=get_remote_address)
+
 
 @router.get("/balance", response_model=BalanceResponse)
 async def get_balance(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -25,7 +29,9 @@ async def get_balance(user: User = Depends(get_current_user), db: AsyncSession =
 
 
 @router.post("/checkout-session")
+@limiter.limit("5/minute")
 async def create_checkout_session(
+    request: Request,
     body: CheckoutSessionRequest,
     user: User = Depends(get_current_user),
 ):
@@ -57,7 +63,9 @@ async def create_checkout_session(
 
 
 @router.post("/dev-add-credits")
+@limiter.limit("3/minute")
 async def dev_add_credits(
+    request: Request,
     body: DevAddCreditsRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

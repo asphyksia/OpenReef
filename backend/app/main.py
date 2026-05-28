@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="OpenReef API", version="0.1.0", lifespan=lifespan)
 
 # Rate limiter state
-app.state.limiter = getattr(auth, "limiter", None)
+app.state.limiter = getattr(auth, "limiter", None) or getattr(providers, "limiter", None) or getattr(payments, "limiter", None)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Parse allowed origins from config (comma-separated)

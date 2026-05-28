@@ -35,3 +35,6 @@ PRESET_DISPLAY = {
     "balanced": {"label": "Balanced", "description": "Good quality/price ratio.", "epochs": 2, "learning_rate": 1e-4},
     "quality": {"label": "Quality", "description": "More epochs, best results.", "epochs": 3, "learning_rate": 5e-5},
 }
+
+# Provider requeue limit (used by training.py and providers.py)
+MAX_REQUEUE = 2
