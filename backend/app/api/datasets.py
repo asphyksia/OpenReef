@@ -64,8 +64,7 @@ async def upload_dataset(
     content_type = "text/csv" if fmt == "csv" else "application/octet-stream"
     storage_service.upload_stream(file.file, r2_key, content_type=content_type)
 
-    # We need size_bytes for the response — use size hint from file object
-    size = file.size or 0
+    size = actual_size
 
     download_url = storage_service.presigned_url(r2_key)
 

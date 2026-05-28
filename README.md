@@ -129,6 +129,8 @@ To switch to real OGPU compute, you need:
 
 ## Provider Reliability
 
+> **Note:** The Provider HTTP API (`/api/providers/`) is mock/hybrid-only. In production, provider identity is authenticated on-chain via OGPU wallet — no HTTP secrets needed.
+
 - **Auto-requeue**: if a provider abandons, the job goes back to queued (max 3 attempts total)
 - **Full refund**: after max attempts, job fails and user gets 100% refund
 - **Reputation tracking**: completed/failed/abandoned counters per provider address

@@ -18,6 +18,7 @@ from ogpu.chain import ChainConfig, ChainId
 from ogpu.client import publish_source, publish_task, cancel_task as cancel_task_sdk
 from ogpu.protocol import Task, vault
 from ogpu.types import (
+    SourceInfo,
     TaskInfo,
     TaskInput,
     ImageEnvironments,
@@ -58,12 +59,12 @@ def _is_safe_url(url: str) -> bool:
     """Check if a URL is safe to fetch (not SSRF)."""
     try:
         parsed = urlparse(url)
-        if parsed.scheme not in ("https", "http"):
+        if parsed.scheme != "https":
             return False
         hostname = parsed.hostname or ""
         if hostname in _BLOCKED_HOSTS:
             return False
-        # Check if it's a private IP
+        # Check if it's a private IP (literal)
         try:
             ip = ip_address(hostname)
             if isinstance(ip, IPv4Address) and (
@@ -71,7 +72,17 @@ def _is_safe_url(url: str) -> bool:
             ):
                 return False
         except ValueError:
-            pass  # hostname, not an IP — allow (DNS resolution happens at request time)
+            pass  # hostname — resolve DNS and check
+            try:
+                import socket
+                resolved = socket.gethostbyname(hostname)
+                ip = ip_address(resolved)
+                if isinstance(ip, IPv4Address) and (
+                    ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+                ):
+                    return False
+            except Exception:
+                return False
         return True
     except Exception:
         return False

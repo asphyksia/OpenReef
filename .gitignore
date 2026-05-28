@@ -61,3 +61,7 @@ openreef_mvp_doc(es).md
 openreef_doc(en).md
 openreef_mvp_doc(en).md
 OGPU_SDK_INTEGRATION_ROADMAP.md
+
+# Build artifacts
+*.tsbuildinfo
+backend/cookies.txt
