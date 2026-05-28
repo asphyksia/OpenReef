@@ -40,11 +40,11 @@ async def register(
     csrf_token = secrets.token_hex(32)
     response.set_cookie(
         key="token", value=token, httponly=True, secure=settings.cookie_secure,
-        samesite="lax", max_age=7 * 24 * 3600, path="/",
+        samesite="lax", max_age=settings.cookie_max_age, path="/",
     )
     response.set_cookie(
         key="csrf_token", value=csrf_token, httponly=False,
-        secure=settings.cookie_secure, samesite="lax", max_age=7 * 24 * 3600, path="/",
+        secure=settings.cookie_secure, samesite="lax", max_age=settings.cookie_max_age, path="/",
     )
     return {"message": "registered"}
 
@@ -66,17 +66,17 @@ async def login(
     csrf_token = secrets.token_hex(32)
     response.set_cookie(
         key="token", value=token, httponly=True, secure=settings.cookie_secure,
-        samesite="lax", max_age=7 * 24 * 3600, path="/",
+        samesite="lax", max_age=settings.cookie_max_age, path="/",
     )
     response.set_cookie(
         key="csrf_token", value=csrf_token, httponly=False,
-        secure=settings.cookie_secure, samesite="lax", max_age=7 * 24 * 3600, path="/",
+        secure=settings.cookie_secure, samesite="lax", max_age=settings.cookie_max_age, path="/",
     )
     return {"message": "ok"}
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
-async def logout(response: Response):
+async def logout(response: Response, _: User = Depends(get_current_user)):
     clear_auth_cookies(response)
     return {"message": "logged out"}
 

@@ -50,9 +50,15 @@ class Settings(BaseSettings):
                 missing.append("STRIPE_SECRET_KEY (must be a real key)")
             if self.client_private_key == "":
                 missing.append("CLIENT_PRIVATE_KEY")
+            if not self.cookie_secure:
+                missing.append("COOKIE_SECURE (must be true in production)")
+            if self.frontend_url.startswith("http://"):
+                missing.append("FRONTEND_URL (must be HTTPS in production)")
+            if self.api_url.startswith("http://"):
+                missing.append("API_URL (must be HTTPS in production)")
             if missing:
                 raise RuntimeError(
-                    f"Missing required secrets for production: {', '.join(missing)}"
+                    f"Missing required settings for production: {', '.join(missing)}"
                 )
 
 

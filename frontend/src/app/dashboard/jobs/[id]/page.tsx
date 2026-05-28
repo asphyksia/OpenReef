@@ -66,6 +66,7 @@ export default function JobDetailPage() {
   }
 
   async function handleCancel() {
+    if (!job) return;
     const refundMsg =
       job.status === "pending"
         ? "This will refund 100% of your credits."

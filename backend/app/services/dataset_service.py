@@ -82,16 +82,20 @@ def _validate_jsonl(text: str, errors: list[str]) -> tuple[int, list[str]]:
 
 
 def _validate_jsonl_stream(file: BinaryIO, errors: list[str]) -> tuple[int, list[str]]:
-    """Validate ALL JSONL rows by streaming (deep validation).
+    """Validate first 1000 JSONL rows deeply, count all rows.
 
-    Every line is checked for valid JSON and dict structure.
-    Reports the first structural error with its line number.
+    Deep structural validation on first N lines, then trust row count.
     """
     row_count = 0
-    max_lines_to_validate = 1000  # validate first 1000 lines deeply, then trust count
+    max_lines_to_validate = 1000
 
     for line_num, raw_line in enumerate(file, start=1):
-        line = raw_line.decode("utf-8").strip()
+        try:
+            line = raw_line.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            errors.append(f"Line {line_num}: file is not valid UTF-8")
+            file.seek(0)
+            return (0, errors)
         if not line:
             continue
         row_count += 1
@@ -100,7 +104,6 @@ def _validate_jsonl_stream(file: BinaryIO, errors: list[str]) -> tuple[int, list
             errors.append(f"Dataset has more than {MAX_ROWS} rows")
             break
 
-        # Deep validate first N lines, then trust the count
         if line_num <= max_lines_to_validate:
             try:
                 obj = json.loads(line)
@@ -141,24 +144,33 @@ def _validate_csv_text(text: str, errors: list[str]) -> tuple[int, list[str]]:
 
 def _validate_csv_stream(file: BinaryIO, errors: list[str]) -> tuple[int, list[str]]:
     """Validate CSV by streaming, counting rows without loading full file."""
-    # Read first line to check header has columns
     first_line = file.readline()
     if not first_line:
         errors.append("File is empty")
         file.seek(0)
         return (0, errors)
 
-    first_row_reader = csv.reader(io.StringIO(first_line.decode("utf-8")))
+    try:
+        first_line_text = first_line.decode("utf-8")
+    except UnicodeDecodeError:
+        errors.append("File is not valid UTF-8")
+        file.seek(0)
+        return (0, errors)
+
+    first_row_reader = csv.reader(io.StringIO(first_line_text))
     first_row = next(first_row_reader, [])
     if len(first_row) < 1:
         errors.append("CSV has no columns")
         file.seek(0)
         return (0, errors)
 
-    # Count remaining data rows
     row_count = 0
     for raw_line in file:
-        line = raw_line.decode("utf-8").rstrip("\r\n")
+        try:
+            line = raw_line.decode("utf-8").rstrip("\r\n")
+        except UnicodeDecodeError:
+            errors.append("File is not valid UTF-8")
+            break
         if not line:
             continue
         row_count += 1
@@ -195,7 +207,11 @@ def _validate_txt_stream(file: BinaryIO, errors: list[str]) -> tuple[int, list[s
 
     for _ in file:
         raw_line = _
-        line = raw_line.decode("utf-8").rstrip("\n\r")
+        try:
+            line = raw_line.decode("utf-8").rstrip("\n\r")
+        except UnicodeDecodeError:
+            errors.append("File is not valid UTF-8")
+            break
         if not line:
             continue
         row_count += 1

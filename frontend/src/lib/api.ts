@@ -1,3 +1,5 @@
+import type { BalanceResponse, Dataset, Job, ModelsResponse, User } from "@/types";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type ApiOptions = RequestInit & { headers?: Record<string, string> };
@@ -70,13 +72,13 @@ export async function logout() {
 }
 
 export async function getMe() {
-  return fetchApi("/api/auth/me");
+  return fetchApi<User>("/api/auth/me");
 }
 
 // ── Datasets ────────────────────────────────────────────────────────────
 
 export async function listDatasets() {
-  return fetchApi("/api/datasets");
+  return fetchApi<Dataset[]>("/api/datasets");
 }
 
 export async function uploadDataset(file: File, name: string) {
@@ -109,17 +111,17 @@ export async function uploadDataset(file: File, name: string) {
 // ── Models ──────────────────────────────────────────────────────────────
 
 export async function listModels() {
-  return fetchApi("/api/models");
+  return fetchApi<ModelsResponse>("/api/models");
 }
 
 // ── Jobs ────────────────────────────────────────────────────────────────
 
 export async function listJobs() {
-  return fetchApi("/api/jobs");
+  return fetchApi<Job[]>("/api/jobs");
 }
 
 export async function getJob(jobId: string) {
-  return fetchApi(`/api/jobs/${jobId}`);
+  return fetchApi<Job>(`/api/jobs/${jobId}`);
 }
 
 export async function createJob(body: {
@@ -128,7 +130,7 @@ export async function createJob(body: {
   preset: string;
   adapter: string;
 }) {
-  return fetchApi("/api/jobs", {
+  return fetchApi<Job>("/api/jobs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -136,21 +138,21 @@ export async function createJob(body: {
 }
 
 export async function confirmJob(jobId: string) {
-  return fetchApi(`/api/jobs/${jobId}/confirm`, { method: "POST" });
+  return fetchApi<Job>(`/api/jobs/${jobId}/confirm`, { method: "POST" });
 }
 
 export async function cancelJob(jobId: string) {
-  return fetchApi(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+  return fetchApi<Job>(`/api/jobs/${jobId}/cancel`, { method: "POST" });
 }
 
 // ── Payments ────────────────────────────────────────────────────────────
 
 export async function getBalance() {
-  return fetchApi("/api/payments/balance");
+  return fetchApi<BalanceResponse>("/api/payments/balance");
 }
 
 export async function createCheckoutSession(amount_usd: number) {
-  return fetchApi("/api/payments/checkout-session", {
+  return fetchApi<{ checkout_url: string }>("/api/payments/checkout-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ amount_usd }),
@@ -158,7 +160,7 @@ export async function createCheckoutSession(amount_usd: number) {
 }
 
 export async function devAddCredits(amount: number) {
-  return fetchApi("/api/payments/dev-add-credits", {
+  return fetchApi<{ balance: number }>("/api/payments/dev-add-credits", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ amount }),

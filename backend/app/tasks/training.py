@@ -194,11 +194,23 @@ def run_job(self, job_id: str):
                     job.progress_pct = 100
                     job.completed_at = datetime.now(timezone.utc)
 
-                # Track provider who completed the job — prefer winning_provider from SDK
-                winner = status_info.get("winning_provider") or job.provider_address
-                if winner:
-                    provider_service.record_provider_completion(session, winner)
-                    job.provider_address = winner
+                    # Track provider who completed the job — prefer winning_provider from SDK
+                    winner = status_info.get("winning_provider") or job.provider_address
+                    if winner:
+                        provider_service.record_provider_completion(session, winner)
+                        job.provider_address = winner
+                else:
+                    # finalized but no result data — fail with refund
+                    job.status = "failed"
+                    job.error_message = "Task finalized but no result data available"
+                    job.completed_at = datetime.now(timezone.utc)
+                    winner = status_info.get("winning_provider") or job.provider_address
+                    if winner:
+                        provider_service.record_provider_failure(session, winner)
+                    if job.estimated_cost and float(job.estimated_cost) > 0:
+                        credit_service.refund_credits_sync(session, job.user_id, float(job.estimated_cost), job.id, description="No result data on finalized task")
+                    session.commit()
+                    return
 
             # Dynamic timeout check: fail job if running too long
             if job.status == "running" and job.started_at:

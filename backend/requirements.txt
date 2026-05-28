@@ -35,8 +35,12 @@ ogpu>=0.2.1
 # Stripe
 stripe>=11.3.0
 
+# Rate limiting
+slowapi>=0.1.9
+
 # HTTP client
 httpx>=0.28.1
+requests>=2.32.0
 
 # Email verification
 aiosmtplib>=3.0.2

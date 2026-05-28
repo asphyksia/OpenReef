@@ -88,6 +88,9 @@ def cancel_job(
             # Requeue the job
             provider_service.record_provider_cancel(db, job)
             db.commit()
+            # Re-enqueue Celery task to resume polling
+            from app.tasks.training import run_job
+            run_job.apply_async(args=[str(job_id)], countdown=5)
             return {"status": "queued", "requeue_count": job.requeue_count, "refund": False}
 
 
