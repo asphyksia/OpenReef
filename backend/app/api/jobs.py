@@ -22,6 +22,47 @@ def _estimate_timeout_seconds(preset: str) -> int:
     return int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
 
 
+async def _check_stale_job(job: Job, db: AsyncSession) -> Job:
+    """Detect and fail jobs that have exceeded their timeout (zombie detection).
+
+    If a job is in a non-terminal state but has been running longer than
+    its estimated timeout, mark it as failed and refund credits.
+    """
+    if job.status not in ("queued", "provisioning", "running", "checkpointing"):
+        return job
+    if not job.started_at:
+        return job
+
+    timeout_seconds = _estimate_timeout_seconds(job.preset)
+    now = datetime.now(timezone.utc)
+    started = job.started_at
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    started = started.astimezone(timezone.utc)
+
+    elapsed = (now - started).total_seconds()
+    if elapsed <= timeout_seconds:
+        return job
+
+    # Job has exceeded timeout — mark as failed
+    job.status = "failed"
+    job.error_message = f"Job timed out ({elapsed / 3600:.1f}h > {timeout_seconds / 3600:.1f}h limit). Worker may have disconnected."
+    job.completed_at = now
+    job.progress_pct = min(int((elapsed / timeout_seconds) * 90 + 10), 99)
+
+    # Refund credits
+    if job.estimated_cost and float(job.estimated_cost) > 0:
+        from app.services import credit_service
+        await credit_service.refund_credits(
+            db, job.user_id, float(job.estimated_cost), job.id,
+            description="Job timed out — worker disconnected"
+        )
+
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
 def _compute_progress(job: Job) -> tuple[int, str | None]:
     """Calculate dynamic progress percentage and ETA for running jobs.
 
@@ -55,6 +96,7 @@ async def list_jobs(user: User = Depends(get_current_user), db: AsyncSession = D
     jobs = result.scalars().all()
     responses = []
     for j in jobs:
+        j = await _check_stale_job(j, db)
         progress_pct, estimated_completion = _compute_progress(j)
         responses.append(_to_response(j, progress_pct=progress_pct, estimated_completion=estimated_completion))
     return responses
@@ -69,6 +111,9 @@ async def get_job(
     job = await db.get(Job, job_id)
     if job is None or job.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    # Lazy stale-job detection: fail jobs that exceeded timeout
+    job = await _check_stale_job(job, db)
 
     download_url = None
     if job.output_r2_key:
