@@ -67,6 +67,28 @@ def run_job(self, job_id: str):
 
         # Phase 1: First execution — publish the task
         if job.ogpu_task_address is None:
+            # Atomic guard: mark as "provisioning" to prevent double-publish
+            # Use raw SQL FOR UPDATE to lock the row
+            from sqlalchemy import text
+            lock_result = session.execute(
+                text("SELECT id, status FROM jobs WHERE id = :jid FOR UPDATE NOWAIT"),
+                {"jid": str(job_id)},
+            )
+            lock_row = lock_result.first()
+            if lock_row is None:
+                logger.warning("Job %s disappeared during lock attempt", job_id)
+                return
+            locked_status = lock_row[1]
+            if locked_status not in ("pending", "queued"):
+                logger.info("Job %s status changed to '%s' during publish, skipping", job_id, locked_status)
+                session.rollback()
+                return
+
+            # Mark as provisioning atomically
+            job.status = "provisioning"
+            job.status_detail = "Publishing OGPU task..."
+            session.commit()
+
             try:
                 base_model = session.get(DBBaseModel, job.base_model_id)
                 if base_model is None:

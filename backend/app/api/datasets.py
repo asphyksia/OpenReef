@@ -30,7 +30,7 @@ async def upload_dataset(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Check size from headers before reading body
+    # Check size from headers; if unavailable, enforce during streaming
     if file.size is not None and file.size > dataset_service.MAX_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -40,13 +40,23 @@ async def upload_dataset(
     filename = file.filename or "unknown"
     fmt = _detect_format(filename)
 
-    # Validate from stream (reads line-by-line, not full file)
+    # Validate from stream (reads line-by-line, enforces MAX_SIZE_BYTES)
     row_count, errors = dataset_service.validate_dataset_stream(file.file, fmt)
 
     if errors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="; ".join(errors),
+        )
+
+    # Enforce size limit during streaming upload
+    file.file.seek(0, 2)  # seek to end
+    actual_size = file.file.tell()
+    file.file.seek(0)
+    if actual_size > dataset_service.MAX_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Dataset exceeds maximum size of {dataset_service.MAX_SIZE_BYTES / (1024*1024):.0f}MB",
         )
 
     # Stream to object storage (no full read into memory)

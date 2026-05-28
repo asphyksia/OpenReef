@@ -169,9 +169,11 @@ async def confirm_job(
 ):
     job = await job_service.confirm_job(db, user.id, job_id)
 
-    # Start the Celery task that publishes to OGPU and polls for completion
-    from app.tasks.training import run_job
-    run_job.delay(str(job.id))
+    # Only start the Celery task if this was a fresh confirm (status just changed to queued)
+    # If the job was already queued (idempotent re-confirm), don't re-trigger
+    if job.status == "queued" and job.ogpu_task_address is None:
+        from app.tasks.training import run_job
+        run_job.delay(str(job.id))
 
     return _to_response(job)
 

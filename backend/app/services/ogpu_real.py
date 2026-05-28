@@ -10,13 +10,14 @@ Uses the ogpu Python SDK to interact with the OpenGPU Network:
 import logging
 import os
 import time
+from urllib.parse import urlparse
+from ipaddress import ip_address, IPv4Address
 
 import requests
 from ogpu.chain import ChainConfig, ChainId
 from ogpu.client import publish_source, publish_task, cancel_task as cancel_task_sdk
 from ogpu.protocol import Task, vault
 from ogpu.types import (
-    SourceInfo,
     TaskInfo,
     TaskInput,
     ImageEnvironments,
@@ -45,6 +46,37 @@ _COMPOSE_URL = os.environ.get(
     "OGPU_COMPOSE_URL",
     "https://raw.githubusercontent.com/OpenReef/main/docker-compose/nvidia.yml",
 )
+
+# SSRF protection: block private, loopback, link-local, and metadata IPs
+_BLOCKED_HOSTS = (
+    "localhost", "127.0.0.1", "::1", "0.0.0.0",
+    "169.254.169.254",  # AWS/GCP metadata
+    "metadata.google.internal",
+)
+
+def _is_safe_url(url: str) -> bool:
+    """Check if a URL is safe to fetch (not SSRF)."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("https", "http"):
+            return False
+        hostname = parsed.hostname or ""
+        if hostname in _BLOCKED_HOSTS:
+            return False
+        # Check if it's a private IP
+        try:
+            ip = ip_address(hostname)
+            if isinstance(ip, IPv4Address) and (
+                ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+            ):
+                return False
+        except ValueError:
+            pass  # hostname, not an IP — allow (DNS resolution happens at request time)
+        return True
+    except Exception:
+        return False
+
+MAX_ARTIFACT_DOWNLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 
 
 def _ensure_chain():
@@ -186,10 +218,20 @@ class RealOGPUAdapter(OGPUAdapter):
                 logger.error("Failed to decode adapter_base64: %s", e)
                 return None
         elif adapter_url:
+            if not _is_safe_url(adapter_url):
+                logger.error("SSRF blocked: unsafe artifact URL %s", adapter_url)
+                return None
             try:
-                resp = requests.get(adapter_url, timeout=300)
+                resp = requests.get(adapter_url, timeout=300, stream=True)
                 resp.raise_for_status()
-                artifact_bytes = resp.content
+                artifact_bytes = b""
+                downloaded = 0
+                for chunk in resp.iter_content(chunk_size=8192):
+                    downloaded += len(chunk)
+                    if downloaded > MAX_ARTIFACT_DOWNLOAD_BYTES:
+                        logger.error("Artifact download exceeded %d bytes limit", MAX_ARTIFACT_DOWNLOAD_BYTES)
+                        return None
+                    artifact_bytes += chunk
             except Exception as e:
                 logger.error("Failed to download artifact from IPFS: %s", e)
                 return None
