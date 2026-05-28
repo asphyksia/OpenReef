@@ -246,7 +246,7 @@ def run_job(self, job_id: str):
             session.commit()
 
             # Only retry if not in terminal state
-            if chain_status not in ("responded", "finalized", "expired", "canceled"):
+            if chain_status not in ("finalized", "expired", "canceled"):
                 run_job.apply_async(args=[job_id], countdown=POLL_INTERVAL)
                 return
 
