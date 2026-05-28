@@ -60,6 +60,11 @@ def run_job(self, job_id: str):
         if job is None:
             return
 
+        # Idempotency guard: if job is already terminal, skip without side effects
+        if job.status in ("completed", "failed", "cancelled", "refunded"):
+            logger.info("Job %s already in terminal status '%s', skipping", job_id, job.status)
+            return
+
         # Phase 1: First execution — publish the task
         if job.ogpu_task_address is None:
             try:

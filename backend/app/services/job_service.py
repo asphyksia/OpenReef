@@ -87,6 +87,11 @@ async def confirm_job(db: AsyncSession, user_id: uuid.UUID, job_id: uuid.UUID) -
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     if job.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+
+    # Idempotency: if already confirmed (queued), return without charging again
+    if job.status == "queued":
+        return job
+
     if job.status != "pending":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Job cannot be confirmed in status '{job.status}'")
 
