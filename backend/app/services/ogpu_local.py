@@ -166,10 +166,16 @@ class LocalOGPUAdapter(OGPUAdapter):
 
         # Check if subprocess is still running
         if pid and current_status in ("attempted", "responded"):
+            process_alive = False
             try:
-                os.kill(int(pid), 0)  # Signal 0 = check if alive
-                process_alive = True
-            except (OSError, ValueError):
+                os.kill(int(pid), 0)  # Signal 0 = check if exists
+                # Check for zombie process (state Z in /proc/{pid}/stat)
+                with open(f"/proc/{pid}/stat", "r") as f:
+                    stat_content = f.read()
+                    # stat format: pid (comm) state ...
+                    state_char = stat_content.split(")")[1].strip().split()[0]
+                    process_alive = state_char != "Z"  # Z = zombie
+            except (OSError, ValueError, FileNotFoundError, IndexError):
                 process_alive = False
 
             if not process_alive:

@@ -147,6 +147,14 @@ def launch_training_subprocess(
     from app.services.ogpu_adapter import get_preset_params
     preset_params = get_preset_params(preset)
 
+    # Determine optimizer based on device type
+    if device_type == "amd_rocm":
+        optimizer = "adamw_torch"  # bitsandbytes not available for ROCm 7.2
+    elif device_type == "nvidia_cuda":
+        optimizer = "paged_adamw_8bit"
+    else:
+        optimizer = "adamw_torch"  # CPU fallback
+
     # Download dataset
     dataset_path = work_path / "dataset.jsonl"
     if dataset_url:
@@ -181,10 +189,8 @@ def launch_training_subprocess(
         env["HIP_VISIBLE_DEVICES"] = "0"
         env["HSA_OVERRIDE_GFX_VERSION"] = os.environ.get("HSA_OVERRIDE_GFX_VERSION", "12.0.0")
         env["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
-        optimizer = "adamw_torch"  # bitsandbytes not available for ROCm 7.2
     elif device_type == "nvidia_cuda":
         env["CUDA_VISIBLE_DEVICES"] = "0"
-        optimizer = "paged_adamw_8bit"
 
     # Build the command — use accelerate launch with axolotl
     cmd = [
