@@ -184,7 +184,12 @@ async def confirm_job(
         if job_peek and job_peek.user_id == user.id and job_peek.status == "pending":
             base_model = await db.get(DBBaseModel, job_peek.base_model_id)
             if base_model:
-                source_address = ogpu_service.get_finetune_source_address()
+                source_address = settings.ogpu_source_address
+                if not source_address:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="OGPU_SOURCE_ADDRESS not configured — cannot check provider capacity",
+                    )
                 smart = SmartRoute(db)
                 if not await smart.check_capacity(source_address, base_model.min_vram_gb):
                     raise HTTPException(

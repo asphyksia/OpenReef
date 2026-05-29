@@ -52,6 +52,7 @@ def build_axolotl_yaml_config(
     preset_params: dict,
     adapter_type: str,
     output_dir: str,
+    optimizer: str = "adamw_torch",
 ) -> str:
     """Build an Axolotl YAML config adapted to the hardware."""
     # Hardware-specific overrides
@@ -116,7 +117,7 @@ save_total_limit: 1
 logging_steps: 1
 
 # Optimizer
-optimizer: paged_adamw_8bit
+optimizer: {optimizer}
 lr_scheduler: cosine
 """
     return yaml_config
@@ -152,10 +153,10 @@ def launch_training_subprocess(
         try:
             download_dataset(dataset_url, dataset_path)
         except Exception as e:
-            logger.warning("Failed to download dataset from URL, using placeholder: %s", e)
-            _create_placeholder_dataset(dataset_path)
+            logger.error("Failed to download dataset from URL: %s", e)
+            raise RuntimeError(f"Dataset download failed: {e}. Job cannot proceed without valid dataset.")
     else:
-        _create_placeholder_dataset(dataset_path)
+        raise RuntimeError("No dataset URL provided. Job cannot proceed.")
 
     # Build Axolotl config
     yaml_content = build_axolotl_yaml_config(
@@ -165,6 +166,7 @@ def launch_training_subprocess(
         preset_params=preset_params,
         adapter_type=adapter_type,
         output_dir=output_dir,
+        optimizer=optimizer,
     )
 
     config_path = work_path / "axolotl_config.yaml"
@@ -179,8 +181,10 @@ def launch_training_subprocess(
         env["HIP_VISIBLE_DEVICES"] = "0"
         env["HSA_OVERRIDE_GFX_VERSION"] = os.environ.get("HSA_OVERRIDE_GFX_VERSION", "12.0.0")
         env["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
+        optimizer = "adamw_torch"  # bitsandbytes not available for ROCm 7.2
     elif device_type == "nvidia_cuda":
         env["CUDA_VISIBLE_DEVICES"] = "0"
+        optimizer = "paged_adamw_8bit"
 
     # Build the command — use accelerate launch with axolotl
     cmd = [

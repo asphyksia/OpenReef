@@ -24,4 +24,4 @@ class Provider(Base):
     ram_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
     base_data_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     last_sync: Mapped[datetime | None] = mapped_column(nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

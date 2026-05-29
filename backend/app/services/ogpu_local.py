@@ -173,16 +173,16 @@ class LocalOGPUAdapter(OGPUAdapter):
                 process_alive = False
 
             if not process_alive:
-                # Process exited — check exit code
-                try:
-                    proc = subprocess.run(
-                        ["cat", f"/proc/{pid}/status"],
-                        capture_output=True, text=True, timeout=2
-                    )
-                except Exception:
-                    pass
-                current_status = "responded"  # subprocess done, artifact pending
-                r.hset(key, "status", "responded")
+                # Process exited — check if artifact is available
+                output_dir = state.get("output_dir", "")
+                has_artifact = False
+                if output_dir:
+                    from pathlib import Path
+                    output_path = Path(output_dir)
+                    has_artifact = bool(list(output_path.glob("**/*.safetensors")) or list(output_path.glob("**/pytorch_model.bin")))
+
+                current_status = "finalized" if has_artifact else "responded"
+                r.hset(key, "status", current_status)
 
         expiry_time = int(created_at) + 86400  # 24h expiry
         time_remaining = expiry_time - int(time.time())
