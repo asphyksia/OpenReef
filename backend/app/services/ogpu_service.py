@@ -52,7 +52,8 @@ def resolve_dataset_url(r2_key: str) -> str:
     """Resolve a dataset R2 key to a publicly accessible URL.
 
     In mock mode, returns a placeholder.
-    In real mode, generates a presigned URL with 24h expiry
+    In local mode, generates a presigned URL (24h expiry).
+    In real mode, generates a presigned URL (24h expiry)
     so the OGPU provider can download the dataset.
     """
     from app.config import settings
@@ -61,5 +62,5 @@ def resolve_dataset_url(r2_key: str) -> str:
     if settings.ogpu_adapter == "mock":
         return f"r2://mock-dataset/{r2_key}"
 
-    # Real mode: generate presigned URL (24h expiry)
+    # Local and real mode: generate presigned URL (24h expiry)
     return storage_service.presigned_url(r2_key, expires_in=86400)

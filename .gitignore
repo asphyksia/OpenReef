@@ -26,6 +26,7 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+.~lock.*
 
 # Node
 frontend/node_modules/
@@ -61,7 +62,13 @@ openreef_mvp_doc(es).md
 openreef_doc(en).md
 openreef_mvp_doc(en).md
 OGPU_SDK_INTEGRATION_ROADMAP.md
+GUIA_TECNICA_FUNDADOR.md
 
 # Build artifacts
 *.tsbuildinfo
 backend/cookies.txt
+
+# Local test artifacts
+plan_prueba_real_amd.md
+test_dataset.jsonl
+last_run_prepared/

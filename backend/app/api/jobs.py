@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.job import Job
@@ -57,6 +58,12 @@ async def _check_stale_job(job: Job, db: AsyncSession) -> Job:
             db, job.user_id, float(job.estimated_cost), job.id,
             description="Job timed out — worker disconnected"
         )
+
+    # Mark provider as inactive
+    if job.provider_address:
+        from app.services.smart_route import SmartRoute
+        smart = SmartRoute(db)
+        await smart.mark_provider_inactive(job.provider_address)
 
     await db.commit()
     await db.refresh(job)
@@ -167,6 +174,24 @@ async def confirm_job(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Pre-flight capacity check (real mode only)
+    if settings.ogpu_adapter == "real":
+        from app.services.smart_route import SmartRoute
+        from app.services import ogpu_service
+        from app.models.base_model import BaseModel as DBBaseModel
+
+        job_peek = await db.get(Job, job_id)
+        if job_peek and job_peek.user_id == user.id and job_peek.status == "pending":
+            base_model = await db.get(DBBaseModel, job_peek.base_model_id)
+            if base_model:
+                source_address = ogpu_service.get_finetune_source_address()
+                smart = SmartRoute(db)
+                if not await smart.check_capacity(source_address, base_model.min_vram_gb):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"No providers available for {base_model.name} (requires {base_model.min_vram_gb}GB VRAM)",
+                    )
+
     job = await job_service.confirm_job(db, user.id, job_id)
 
     # Only start the Celery task if this was a fresh confirm (status just changed to queued)

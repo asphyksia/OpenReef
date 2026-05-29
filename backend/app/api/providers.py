@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.job import Job
+from app.models.provider import Provider
 from app.services import credit_service, provider_service
 from app.services.pricing import MAX_REQUEUE
 
@@ -51,6 +52,23 @@ def heartbeat(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job not in running status")
 
         provider_service.record_heartbeat(db, address, job_id)
+
+        # Sync hardware if stale (>1h since last sync)
+        from datetime import datetime, timezone
+        from app.services.smart_route import SmartRoute
+        from app.services import ogpu_service
+
+        provider = db.get(Provider, address)
+        if provider:
+            needs_sync = (
+                provider.last_sync is None
+                or (datetime.now(timezone.utc) - provider.last_sync).total_seconds() > 3600
+            )
+            if needs_sync:
+                source_address = ogpu_service.get_finetune_source_address()
+                smart = SmartRoute(db)
+                smart.sync_provider(address, source_address)
+
         db.commit()
 
         return {"ok": True, "job_id": str(job_id)}

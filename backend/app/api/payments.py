@@ -70,8 +70,8 @@ async def dev_add_credits(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Development-only: add credits without Stripe. Only available when OGPU_ADAPTER=mock."""
-    if settings.ogpu_adapter != "mock":
+    """Development-only: add credits without Stripe. Only available when OGPU_ADAPTER=mock or local."""
+    if settings.ogpu_adapter not in ("mock", "local"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dev credits disabled in production")
     await credit_service.add_credits(db, user.id, body.amount, "Dev credits (MVP testing)")
     await db.commit()

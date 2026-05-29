@@ -31,9 +31,12 @@ def _get_sync_engine():
         sync_engine = create_engine(_build_sync_url())
     return sync_engine
 
-_MOCK = os.environ.get("OGPU_ADAPTER", "mock").lower() != "real"
-POLL_INTERVAL = 5 if _MOCK else 30
-MAX_RETRIES = 20 if _MOCK else 240
+_ADAPTER_MODE = settings.ogpu_adapter
+_MOCK = _ADAPTER_MODE == "mock"
+_LOCAL = _ADAPTER_MODE == "local"
+
+POLL_INTERVAL = 5 if _MOCK else 15 if _LOCAL else 30
+MAX_RETRIES = 20 if _MOCK else 120 if _LOCAL else 240
 MAX_PUBLISH_RETRIES = 1  # Max retries if OGPU task publish fails
 
 
@@ -114,7 +117,7 @@ def run_job(self, job_id: str):
                 config = ogpu_service.build_task_config(axolotl)
 
                 source_address = ogpu_service.get_finetune_source_address()
-                ogpu_payment = int(float(job.estimated_cost) * 1e17) if not _MOCK else 100
+                ogpu_payment = int(float(job.estimated_cost) * 1e17) if not (_MOCK or _LOCAL) else 100
 
                 task_address = ogpu_service.publish_finetune_task(
                     source_address=source_address,
@@ -124,7 +127,7 @@ def run_job(self, job_id: str):
 
                 job.ogpu_task_address = task_address
                 job.status = "queued"
-                mode = "mock" if _MOCK else "real"
+                mode = "mock" if _MOCK else "local" if _LOCAL else "real"
                 job.status_detail = f"Task published ({mode}), waiting for providers..."
                 session.commit()
             except Exception as e:

@@ -43,9 +43,13 @@ _FINETUNE_SOURCE_ADDRESS = os.environ.get("OGPU_SOURCE_ADDRESS", "")
 
 # URL to the hosted docker-compose file for the OpenReef Axolotl source
 # Must be a public HTTPS URL — providers fetch this to set up their container
-_COMPOSE_URL = os.environ.get(
-    "OGPU_COMPOSE_URL",
+_COMPOSE_URL_NVIDIA = os.environ.get(
+    "OGPU_COMPOSE_URL_NVIDIA",
     "https://raw.githubusercontent.com/OpenReef/main/docker-compose/nvidia.yml",
+)
+_COMPOSE_URL_AMD = os.environ.get(
+    "OGPU_COMPOSE_URL_AMD",
+    "https://raw.githubusercontent.com/OpenReef/main/docker-compose/amd.yml",
 )
 
 # SSRF protection: block private, loopback, link-local, and metadata IPs
@@ -113,7 +117,8 @@ class RealOGPUAdapter(OGPUAdapter):
             name="OpenReef-FineTune",
             description="Axolotl fine-tuning for LoRA/QLoRA adapters",
             imageEnvs=ImageEnvironments(
-                nvidia=_COMPOSE_URL,
+                nvidia=_COMPOSE_URL_NVIDIA,
+                amd=_COMPOSE_URL_AMD,
             ),
             deliveryMethod=DeliveryMethod.FIRST_RESPONSE,
             minPayment=0,

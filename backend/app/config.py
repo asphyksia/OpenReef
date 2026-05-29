@@ -1,5 +1,6 @@
 import os
 import warnings
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -20,7 +21,7 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     stripe_publishable_key: str = ""
 
-    # OGPU adapter: mock (local dev) or real (production)
+    # OGPU adapter: mock (local dev), real (production), or local (local machine)
     ogpu_adapter: str = "mock"
     provider_api_secret: str = os.environ.get("PROVIDER_API_SECRET", "dev-secret-change-me")
 
@@ -36,7 +37,18 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # True in production (requires HTTPS)
     cookie_max_age: int = 7 * 24 * 3600  # 7 days
 
-    model_config = {"env_file": ".env"}
+    # AMD ROCm overrides (loaded from .env.local, not committed)
+    hsa_override_gfx_version: str | None = None
+    torch_rocm_aotriton_enable_experimental: str | None = None
+
+    model_config = {"env_file": (".env", ".env.local"), "extra": "ignore"}
+
+    @field_validator("ogpu_adapter")
+    @classmethod
+    def validate_adapter(cls, v):
+        if v not in ("mock", "real", "local"):
+            raise ValueError("ogpu_adapter must be mock, real, or local")
+        return v
 
     def validate_production(self) -> None:
         """Fail startup if required secrets are missing in production mode."""
@@ -63,6 +75,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Propagate ROCm overrides to os.environ for subprocesses
+if settings.hsa_override_gfx_version:
+    os.environ["HSA_OVERRIDE_GFX_VERSION"] = settings.hsa_override_gfx_version
+if settings.torch_rocm_aotriton_enable_experimental:
+    os.environ["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = settings.torch_rocm_aotriton_enable_experimental
 
 # Warn if running with default JWT secret in non-mock mode
 if settings.jwt_secret == "dev-secret-change-me" and settings.ogpu_adapter == "mock":
