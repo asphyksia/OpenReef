@@ -1,6 +1,18 @@
 import type { BalanceResponse, Dataset, Job, ModelsResponse, User } from "@/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+// Validate API URL at module load time — fail loudly if misconfigured in production
+const isProd = process.env.NODE_ENV === "production";
+if (isProd && !NEXT_PUBLIC_API_URL) {
+  throw new Error(
+    "NEXT_PUBLIC_API_URL is not configured. " +
+    "Set it in .env.production or your deployment environment. " +
+    "Example: NEXT_PUBLIC_API_URL=https://api.openreef.com"
+  );
+}
+
+const API_BASE = NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type ApiOptions = RequestInit & { headers?: Record<string, string> };
 
