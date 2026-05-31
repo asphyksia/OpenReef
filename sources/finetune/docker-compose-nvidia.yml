@@ -1,8 +1,12 @@
 version: "3.8"
 
+# OpenReef Fine-Tune Source — NVIDIA CUDA
+# Providers with NVIDIA GPUs use this compose file.
+# The Provider App fetches this URL from the source's ImageEnvironments metadata.
+
 services:
   finetune:
-    image: ghcr.io/openreef/finetune-worker:latest
+    image: ghcr.io/openreef/finetune-worker:cuda-latest
     build:
       context: .
       dockerfile: Dockerfile

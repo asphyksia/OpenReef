@@ -1,0 +1,26 @@
+# OpenReef Fine-Tune Worker — AMD ROCm
+# Based on official ROCm PyTorch image.
+
+FROM rocm/pytorch:rocm6.2.4_ubuntu22.04_py3.10_pytorch_release_2.5.1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 python3.10-venv python3-pip git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3.10 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Axolotl WITHOUT flash-attention (not supported on ROCm)
+RUN pip install --no-cache-dir \
+    "axolotl==0.6.0" \
+    transformers accelerate peft bitsandbytes \
+    trl datasets tokenizers \
+    s3fs fsspec
+
+# Install OGPU service SDK for provider-side handling
+RUN pip install --no-cache-dir "ogpu>=0.2.1"
+
+WORKDIR /workspace
+
+COPY worker.py /workspace/worker.py
+ENTRYPOINT ["python", "/workspace/worker.py"]

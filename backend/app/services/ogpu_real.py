@@ -41,15 +41,17 @@ logger = logging.getLogger(__name__)
 _OGPU_TESTNET = os.environ.get("OGPU_USE_TESTNET", "true").lower() == "true"
 _FINETUNE_SOURCE_ADDRESS = os.environ.get("OGPU_SOURCE_ADDRESS", "")
 
-# URL to the hosted docker-compose file for the OpenReef Axolotl source
-# Must be a public HTTPS URL — providers fetch this to set up their container
+# URL to the hosted docker-compose files for the OpenReef Axolotl source
+# Must be public HTTPS URLs — providers fetch these to set up their container
+_GITHUB_RAW = "https://raw.githubusercontent.com/Asphyksia/OpenReef/main/sources/finetune"
+
 _COMPOSE_URL_NVIDIA = os.environ.get(
     "OGPU_COMPOSE_URL_NVIDIA",
-    "https://raw.githubusercontent.com/OpenReef/main/docker-compose/nvidia.yml",
+    f"{_GITHUB_RAW}/docker-compose-nvidia.yml",
 )
 _COMPOSE_URL_AMD = os.environ.get(
     "OGPU_COMPOSE_URL_AMD",
-    "https://raw.githubusercontent.com/OpenReef/main/docker-compose/amd.yml",
+    f"{_GITHUB_RAW}/docker-compose-amd.yml",
 )
 
 # SSRF protection: block private, loopback, link-local, and metadata IPs
