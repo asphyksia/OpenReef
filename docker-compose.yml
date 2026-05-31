@@ -53,7 +53,7 @@ services:
 
   flower:
     build: ./backend
-    command: celery -A app.tasks.celery_app flower --port=5555 --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin}
+    command: celery -A app.tasks.celery_app flower --port=5555 --basic_auth=${FLOWER_USER:?FLOWER_USER not set}:${FLOWER_PASSWORD:?FLOWER_PASSWORD not set}
     ports:
       - "5555:5555"
     env_file:

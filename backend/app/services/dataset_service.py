@@ -160,7 +160,7 @@ def _validate_jsonl_stream(file: BinaryIO, errors: list[str]) -> tuple[int, int,
         # Random sampling validation: validate rows distributed throughout the file
         # Uses a hash-based approach to select rows evenly across the entire stream
         should_validate = (validations_done < max_validations and
-                          ((row_num + validation_seed) % max(1, MAX_ROWS // max_validations) == 0))
+                          ((line_num + validation_seed) % max(1, MAX_ROWS // max_validations) == 0))
         if should_validate:
             try:
                 obj = json.loads(line)
