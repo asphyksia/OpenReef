@@ -1,3 +1,5 @@
+import os
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
@@ -38,6 +40,11 @@ async def upload_dataset(
         )
 
     filename = file.filename or "unknown"
+    # Sanitize filename to prevent path traversal and special characters
+    filename = os.path.basename(filename)
+    filename = re.sub(r"[^a-zA-Z0-9._-]", "_", filename)
+    if not filename:
+        filename = "dataset"
     fmt = _detect_format(filename)
 
     # Validate from stream (reads line-by-line, enforces MAX_SIZE_BYTES)

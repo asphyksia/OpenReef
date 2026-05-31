@@ -51,7 +51,8 @@ async def add_credits(db: DbSession, user_id: uuid.UUID, amount: float, descript
 
 
 async def charge_credits(db: DbSession, user_id: uuid.UUID, amount: float, job_id: uuid.UUID, description: str = "Job charge") -> None:
-    balance = await get_balance(db, user_id)
+    # Lock ledger rows before reading balance to prevent concurrent overdrafts
+    balance = await get_balance_for_update(db, user_id)
     if balance < amount:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,

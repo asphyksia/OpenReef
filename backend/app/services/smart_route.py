@@ -139,11 +139,12 @@ class SmartRoute:
     async def check_capacity(self, source_address: str, min_vram_gb: int) -> bool:
         """Check if there's at least one active GPU provider with enough VRAM.
 
+        Uses cached provider data from the local DB — does NOT sync from on-chain.
+        For fresh sync, call sync_all_providers() separately (e.g. via Celery Beat).
+
         Returns True if capacity exists, False otherwise.
         Providers with unknown VRAM (vram_gb IS NULL) are included optimistically.
         """
-        await self.sync_all_providers(source_address)
-
         query = select(func.count()).where(
             DBProvider.is_active == True,
             DBProvider.is_blocked == False,
@@ -153,6 +154,15 @@ class SmartRoute:
 
         count = await self.db.scalar(query)
         return (count or 0) > 0
+
+    async def check_capacity_with_sync(self, source_address: str, min_vram_gb: int) -> bool:
+        """Sync providers from on-chain THEN check capacity.
+
+        SLOW — use only for initial setup or manual refresh.
+        For normal confirm_job flow, use check_capacity() which reads cached DB data.
+        """
+        await self.sync_all_providers(source_address)
+        return await self.check_capacity(source_address, min_vram_gb)
 
     async def mark_provider_inactive(self, provider_address: str) -> None:
         """Mark a provider as inactive (no recent heartbeat)."""
