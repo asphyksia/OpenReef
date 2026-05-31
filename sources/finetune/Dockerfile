@@ -10,9 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3.10 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Axolotl with flash-attention support
+# Install build dependencies
+RUN pip install --no-cache-dir packaging setuptools wheel
+
+# Install torch first (required by axolotl setup)
+RUN pip install --no-cache-dir torch
+
+# Install Axolotl (without flash-attn — SDPA attention works fine on NVIDIA)
+# flash-attn can be added later as a performance optimization
 RUN pip install --no-cache-dir \
-    "axolotl[flash-attn]==0.6.0" \
+    "axolotl==0.6.0" \
     transformers accelerate peft bitsandbytes \
     trl datasets tokenizers \
     s3fs fsspec
