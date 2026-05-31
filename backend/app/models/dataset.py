@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,7 @@ class Dataset(Base):
     format: Mapped[str] = mapped_column(String(10), nullable=False)  # jsonl, csv, txt
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     validation_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, valid, invalid
     validation_errors: Mapped[list] = mapped_column(JSONB, default=list)
     r2_key: Mapped[str] = mapped_column(String(500), nullable=False)

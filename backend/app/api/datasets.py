@@ -41,7 +41,7 @@ async def upload_dataset(
     fmt = _detect_format(filename)
 
     # Validate from stream (reads line-by-line, enforces MAX_SIZE_BYTES)
-    row_count, errors = dataset_service.validate_dataset_stream(file.file, fmt)
+    row_count, token_count, errors = dataset_service.validate_dataset_stream(file.file, fmt)
 
     if errors:
         raise HTTPException(
@@ -75,6 +75,7 @@ async def upload_dataset(
         format=fmt,
         size_bytes=size,
         row_count=row_count,
+        token_count=token_count,
         validation_status="valid",
         validation_errors=[],
         r2_key=r2_key,
@@ -132,6 +133,7 @@ def _to_response(d: Dataset, r2_url: str | None = None) -> DatasetResponse:
         format=d.format,
         size_bytes=d.size_bytes,
         row_count=d.row_count,
+        token_count=d.token_count,
         validation_status=d.validation_status,
         validation_errors=d.validation_errors or [],
         created_at=d.created_at.isoformat() if d.created_at else "",

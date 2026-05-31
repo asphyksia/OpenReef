@@ -9,6 +9,7 @@ class DatasetResponse(BaseModel):
     format: str
     size_bytes: int
     row_count: int | None
+    token_count: int | None
     validation_status: str
     validation_errors: list
     created_at: str
