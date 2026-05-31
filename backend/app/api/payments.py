@@ -80,6 +80,7 @@ async def dev_add_credits(
 
 
 @router.post("/webhook")
+@limiter.limit("60/minute")
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     import stripe
     stripe.api_key = settings.stripe_secret_key

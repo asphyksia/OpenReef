@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import logging
+import random
 from typing import BinaryIO
 
 import tiktoken
@@ -114,19 +115,30 @@ def _validate_jsonl(text: str, errors: list[str]) -> tuple[int, int, list[str]]:
 
 
 def _validate_jsonl_stream(file: BinaryIO, errors: list[str]) -> tuple[int, int, list[str]]:
-    """Validate first 1000 JSONL rows deeply, count all rows, estimate tokens.
+    """Validate JSONL by streaming with byte limit enforcement and random sampling.
 
-    For token counting, we sample every Nth row to avoid reading the entire
-    file twice, then extrapolate.
+    - Accumulates bytes read and aborts if MAX_SIZE_BYTES is exceeded (Fix 9)
+    - Validates rows distributed throughout the file via random sampling,
+      not just the first N rows (Fix 10)
+    - Counts tokens by sampling every Nth row for speed
     """
     row_count = 0
-    max_lines_to_validate = 1000
+    bytes_read = 0
+    max_validations = 1000  # Max rows to structurally validate
+    validations_done = 0
     sample_interval = 10  # count tokens on every 10th row for speed
     sampled_tokens = 0
     sampled_rows = 0
     has_cjk = False
+    validation_seed = random.randint(0, 1000)  # Random starting point for validation
 
     for line_num, raw_line in enumerate(file, start=1):
+        bytes_read += len(raw_line)
+        if bytes_read > MAX_SIZE_BYTES:
+            errors.append(f"Dataset exceeds maximum size of {MAX_SIZE_BYTES / (1024*1024):.0f}MB")
+            file.seek(0)
+            return (0, 0, errors)
+
         try:
             line = raw_line.decode("utf-8").strip()
         except UnicodeDecodeError:
@@ -145,7 +157,11 @@ def _validate_jsonl_stream(file: BinaryIO, errors: list[str]) -> tuple[int, int,
             errors.append(f"Dataset has more than {MAX_ROWS} rows")
             break
 
-        if line_num <= max_lines_to_validate:
+        # Random sampling validation: validate rows distributed throughout the file
+        # Uses a hash-based approach to select rows evenly across the entire stream
+        should_validate = (validations_done < max_validations and
+                          ((row_num + validation_seed) % max(1, MAX_ROWS // max_validations) == 0))
+        if should_validate:
             try:
                 obj = json.loads(line)
                 if not isinstance(obj, dict):
@@ -157,6 +173,7 @@ def _validate_jsonl_stream(file: BinaryIO, errors: list[str]) -> tuple[int, int,
             except json.JSONDecodeError as e:
                 errors.append(f"Line {line_num}: invalid JSON - {e}")
                 break
+            validations_done += 1
 
         # Sample tokens every Nth row
         if row_count % sample_interval == 0:
@@ -180,13 +197,9 @@ def _validate_jsonl_stream(file: BinaryIO, errors: list[str]) -> tuple[int, int,
         avg_tokens_per_row = sampled_tokens / sampled_rows
         total_tokens = int(avg_tokens_per_row * row_count)
     else:
-        # Fallback: rough estimate from file size
-        file.seek(0, 2)
-        file_size = file.tell()
-        file.seek(0)
-        # ~4 chars/token for ASCII, ~2 for CJK
+        # Fallback: rough estimate from bytes read
         chars_per_token = 2 if has_cjk else 4
-        total_tokens = file_size // chars_per_token
+        total_tokens = bytes_read // chars_per_token
 
     file.seek(0)
     return (row_count, total_tokens, errors)
@@ -237,11 +250,16 @@ def _validate_csv_stream(file: BinaryIO, errors: list[str]) -> tuple[int, int, l
         return (0, 0, errors)
 
     row_count = 0
+    bytes_read = len(first_line)
     sampled_tokens = 0
     sampled_rows = 0
     sample_interval = 10
 
     for raw_line in file:
+        bytes_read += len(raw_line)
+        if bytes_read > MAX_SIZE_BYTES:
+            errors.append(f"Dataset exceeds maximum size of {MAX_SIZE_BYTES / (1024*1024):.0f}MB")
+            break
         try:
             line = raw_line.decode("utf-8").rstrip("\r\n")
         except UnicodeDecodeError:
@@ -306,12 +324,17 @@ def _validate_txt(text: str, errors: list[str]) -> tuple[int, int, list[str]]:
 def _validate_txt_stream(file: BinaryIO, errors: list[str]) -> tuple[int, int, list[str]]:
     """Validate TXT by streaming, counting lines and estimating tokens."""
     row_count = 0
+    bytes_read = 0
     first_line_checked = False
     sampled_tokens = 0
     sampled_rows = 0
     sample_interval = 10
 
     for raw_line in file:
+        bytes_read += len(raw_line)
+        if bytes_read > MAX_SIZE_BYTES:
+            errors.append(f"Dataset exceeds maximum size of {MAX_SIZE_BYTES / (1024*1024):.0f}MB")
+            break
         try:
             line = raw_line.decode("utf-8").rstrip("\n\r")
         except UnicodeDecodeError:
@@ -344,10 +367,7 @@ def _validate_txt_stream(file: BinaryIO, errors: list[str]) -> tuple[int, int, l
         avg_tokens_per_row = sampled_tokens / sampled_rows
         total_tokens = int(avg_tokens_per_row * row_count)
     else:
-        file.seek(0, 2)
-        file_size = file.tell()
-        file.seek(0)
-        total_tokens = file_size // 4
+        total_tokens = bytes_read // 4
 
     file.seek(0)
     return (row_count, total_tokens, errors)
