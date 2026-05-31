@@ -3,29 +3,16 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import get_sync_engine
+from app.limiter import limiter
 from app.models.job import Job
 from app.services import credit_service, provider_service
 from app.services.pricing import MAX_REQUEUE
 
 router = APIRouter(prefix="/api/providers", tags=["providers"])
-
-# Singleton sync engine — avoids creating a new engine per request
-_sync_engine = None
-
-def _get_sync_engine():
-    global _sync_engine
-    if _sync_engine is None:
-        url = settings.database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
-        _sync_engine = create_engine(url)
-    return _sync_engine
-
-limiter = Limiter(key_func=get_remote_address)
 
 
 def _validate_provider_secret(x_provider_secret: str | None = Header(None)):
@@ -42,7 +29,7 @@ def heartbeat(
     job_id: uuid.UUID,
     _: None = Depends(_validate_provider_secret),
 ):
-    engine = _get_sync_engine()
+    engine = get_sync_engine()
     with Session(engine) as db:
         job = db.get(Job, job_id)
         if job is None:
@@ -64,7 +51,7 @@ def cancel_job(
     job_id: uuid.UUID,
     _: None = Depends(_validate_provider_secret),
 ):
-    engine = _get_sync_engine()
+    engine = get_sync_engine()
     with Session(engine) as db:
         job = db.get(Job, job_id)
         if job is None:
@@ -101,7 +88,7 @@ def get_provider_stats(
     address: str,
     _: None = Depends(_validate_provider_secret),
 ):
-    engine = _get_sync_engine()
+    engine = get_sync_engine()
     with Session(engine) as db:
         stats = provider_service.get_provider_stats(db, address)
         if stats is None:

@@ -4,10 +4,10 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import get_sync_engine
 from app.services.pricing import MAX_REQUEUE, PRESET_HOURS, TIMEOUT_MULTIPLIER
 from app.tasks.celery_app import celery_app
 
@@ -15,21 +15,6 @@ logger = logging.getLogger(__name__)
 
 # Import all models so SQLAlchemy has the full schema
 from app.models import user, dataset, job, credit_ledger, base_model, provider  # noqa: F401
-
-# Sync engine for Celery tasks (avoids asyncpg event loop issues)
-def _build_sync_url():
-    """Convert asyncpg URL to psycopg2 URL."""
-    url = settings.database_url
-    return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
-
-sync_engine = None
-
-def _get_sync_engine():
-    """Lazy init to avoid crash at import time if DB is not ready."""
-    global sync_engine
-    if sync_engine is None:
-        sync_engine = create_engine(_build_sync_url())
-    return sync_engine
 
 _ADAPTER_MODE = settings.ogpu_adapter
 _MOCK = _ADAPTER_MODE == "mock"
@@ -58,7 +43,7 @@ def run_job(self, job_id: str):
     from app.models.base_model import BaseModel as DBBaseModel
     from app.services import credit_service, ogpu_service, provider_service
 
-    with Session(_get_sync_engine()) as session:
+    with Session(get_sync_engine()) as session:
         job = session.get(Job, uuid.UUID(job_id))
         if job is None:
             return
@@ -306,7 +291,7 @@ def run_job(self, job_id: str):
             logger.exception("Poll error for job %s (attempt %d/%d)", job_id, self.request.retries + 1, MAX_RETRIES)
             if self.request.retries >= MAX_RETRIES - 1:
                 # Max retries reached — mark job as failed
-                with Session(_get_sync_engine()) as fail_session:
+                with Session(get_sync_engine()) as fail_session:
                     import uuid
                     from app.models.job import Job
                     failed_job = fail_session.get(Job, uuid.UUID(job_id))

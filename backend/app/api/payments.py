@@ -2,14 +2,13 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.limiter import limiter
 from app.models.user import User
 from app.models.credit_ledger import ProcessedEvent
 from app.schemas.payment import BalanceResponse, CheckoutSessionRequest, DevAddCreditsRequest
@@ -18,8 +17,6 @@ from app.services import credit_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
-
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.get("/balance", response_model=BalanceResponse)

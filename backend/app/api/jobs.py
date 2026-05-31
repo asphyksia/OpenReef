@@ -134,12 +134,19 @@ async def get_job(
                         estimated_completion=estimated_completion)
 
 
-@router.get("/{job_id}/download", response_model=JobResponse)
+@router.get("/{job_id}/download")
 async def download_job(
     job_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Redirect to a presigned URL for downloading the job artifact.
+
+    Returns a 302 redirect rather than the full JobResponse,
+    since the download URL is the only useful information here.
+    """
+    from fastapi.responses import RedirectResponse
+
     job = await db.get(Job, job_id)
     if job is None or job.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
@@ -147,8 +154,7 @@ async def download_job(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No artifact available for this job")
     from app.services import storage_service
     download_url = storage_service.presigned_url(job.output_r2_key)
-    progress_pct, estimated_completion = _compute_progress(job)
-    return _to_response(job, download_url=download_url, progress_pct=progress_pct, estimated_completion=estimated_completion)
+    return RedirectResponse(url=download_url)
 
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)

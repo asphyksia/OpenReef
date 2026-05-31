@@ -7,10 +7,11 @@ exceeded their heartbeat timeout, and to evaluate provider penalties.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import get_sync_engine
 from app.models.job import Job
 from app.models.provider import Provider
 from app.services import credit_service, provider_service
@@ -21,30 +22,13 @@ logger = logging.getLogger(__name__)
 HEARTBEAT_TIMEOUT_SECONDS = 300  # 5 minutes
 
 
-def _build_sync_url():
-    """Convert asyncpg URL to psycopg2 URL."""
-    url = settings.database_url
-    return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
-
-
-def _get_sync_engine():
-    """Lazy init to avoid crash at import time if DB is not ready."""
-    global _sync_engine
-    if _sync_engine is None:
-        _sync_engine = create_engine(_build_sync_url())
-    return _sync_engine
-
-
-_sync_engine = None
-
-
 def check_stale_jobs():
     """Find and fail jobs that have exceeded their heartbeat timeout.
     
     Called periodically by Celery Beat or cron.
     Returns count of jobs processed.
     """
-    engine = _get_sync_engine()
+    engine = get_sync_engine()
     processed = 0
 
     with Session(engine) as session:
