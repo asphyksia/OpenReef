@@ -203,7 +203,14 @@ async def confirm_job(
     # If the job was already queued (idempotent re-confirm), don't re-trigger
     if job.status == "queued" and job.ogpu_task_address is None:
         from app.tasks.training import run_job
-        run_job.delay(str(job.id))
+        from sqlalchemy import event
+
+        # Fire Celery task only AFTER the transaction is committed and visible to workers
+        # This prevents race condition where worker picks up job before commit is visible
+        job_id_str = str(job.id)
+        @event.listens_for(db.sync_session, "after_commit")
+        def _fire_celery(session):
+            run_job.delay(job_id_str)
 
     return _to_response(job)
 

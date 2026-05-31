@@ -208,13 +208,13 @@ def run_job(self, job_id: str):
                     # Validate the artifact before marking as completed
                     is_valid, reason = ogpu_service.validate_artifact(job.output_r2_key)
                     if not is_valid:
-                    job.status = "failed"
-                    job.error_message = f"Invalid output artifact: {reason}"
-                    job.completed_at = datetime.now(timezone.utc)
-                    winner = status_info.get("winning_provider") or job.provider_address
-                    if winner:
-                        provider_service.record_provider_failure(session, winner)
-                        provider_service.evaluate_provider_penalty(session, winner)
+                        job.status = "failed"
+                        job.error_message = f"Invalid output artifact: {reason}"
+                        job.completed_at = datetime.now(timezone.utc)
+                        winner = status_info.get("winning_provider") or job.provider_address
+                        if winner:
+                            provider_service.record_provider_failure(session, winner)
+                            provider_service.evaluate_provider_penalty(session, winner)
                         if job.estimated_cost and float(job.estimated_cost) > 0:
                             credit_service.refund_credits_sync(session, job.user_id, float(job.estimated_cost), job.id, description="Invalid output artifact")
                         session.commit()
