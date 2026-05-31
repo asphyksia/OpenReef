@@ -48,6 +48,6 @@ jobs:
           file: sources/finetune/${{ matrix.dockerfile }}
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/finetune-worker:${{ matrix.tag }}
+            ghcr.io/${{ github.repository_owner }}/openreef/finetune-worker:${{ matrix.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
