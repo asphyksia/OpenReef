@@ -97,6 +97,7 @@ def evaluate_provider_penalty(session: Session, address: str) -> bool:
         provider.is_blocked = True
         provider.blocked_at = _utc_now()
         provider.blocked_reason = f"High fail rate: {fail_rate:.0%} ({provider.failed_count} failed, {provider.abandoned_count} abandoned out of {total} total)"
+        session.flush()
         logger.warning("Provider %s blocked: %s", address, provider.blocked_reason)
         return True
     return False
@@ -112,6 +113,7 @@ def unblock_provider(session: Session, address: str) -> bool:
     provider.is_blocked = False
     provider.blocked_at = None
     provider.blocked_reason = None
+    session.flush()
     logger.info("Provider %s unblocked manually", address)
     return True
 

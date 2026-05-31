@@ -5,7 +5,7 @@ exceeded their heartbeat timeout, and to evaluate provider penalties.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
@@ -49,11 +49,12 @@ def check_stale_jobs():
 
     with Session(engine) as session:
         # Find jobs in non-terminal states without recent heartbeat
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)
         stale_jobs = session.execute(
             select(Job).where(
                 Job.status.in_(["running", "queued", "provisioning", "checkpointing"]),
                 Job.last_heartbeat != None,
-                text(f"(NOW() AT TIME ZONE 'utc' - last_heartbeat) > interval '{HEARTBEAT_TIMEOUT_SECONDS} seconds'"),
+                Job.last_heartbeat < cutoff,
             )
         ).scalars().all()
 
