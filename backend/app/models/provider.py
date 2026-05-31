@@ -25,3 +25,6 @@ class Provider(Base):
     base_data_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     last_sync: Mapped[datetime | None] = mapped_column(nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    blocked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    blocked_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)

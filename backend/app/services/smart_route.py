@@ -146,6 +146,7 @@ class SmartRoute:
 
         query = select(func.count()).where(
             DBProvider.is_active == True,
+            DBProvider.is_blocked == False,
             text("(environment & 6) != 0"),  # 6 = NVIDIA(2) | AMD(4) — bitwise check
             (DBProvider.vram_gb >= min_vram_gb) | (DBProvider.vram_gb == None),
         )

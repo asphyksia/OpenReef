@@ -208,12 +208,13 @@ def run_job(self, job_id: str):
                     # Validate the artifact before marking as completed
                     is_valid, reason = ogpu_service.validate_artifact(job.output_r2_key)
                     if not is_valid:
-                        job.status = "failed"
-                        job.error_message = f"Invalid output artifact: {reason}"
-                        job.completed_at = datetime.now(timezone.utc)
-                        winner = status_info.get("winning_provider") or job.provider_address
-                        if winner:
-                            provider_service.record_provider_failure(session, winner)
+                    job.status = "failed"
+                    job.error_message = f"Invalid output artifact: {reason}"
+                    job.completed_at = datetime.now(timezone.utc)
+                    winner = status_info.get("winning_provider") or job.provider_address
+                    if winner:
+                        provider_service.record_provider_failure(session, winner)
+                        provider_service.evaluate_provider_penalty(session, winner)
                         if job.estimated_cost and float(job.estimated_cost) > 0:
                             credit_service.refund_credits_sync(session, job.user_id, float(job.estimated_cost), job.id, description="Invalid output artifact")
                         session.commit()
@@ -229,6 +230,11 @@ def run_job(self, job_id: str):
                     if winner:
                         provider_service.record_provider_completion(session, winner)
                         job.provider_address = winner
+
+                    # Evaluate penalty for failed providers after a successful completion
+                    # (check if any other providers should be blocked)
+                    if job.provider_address:
+                        provider_service.evaluate_provider_penalty(session, job.provider_address)
                 else:
                     # finalized but no result data — fail with refund
                     job.status = "failed"
@@ -237,6 +243,7 @@ def run_job(self, job_id: str):
                     winner = status_info.get("winning_provider") or job.provider_address
                     if winner:
                         provider_service.record_provider_failure(session, winner)
+                        provider_service.evaluate_provider_penalty(session, winner)
                     if job.estimated_cost and float(job.estimated_cost) > 0:
                         credit_service.refund_credits_sync(session, job.user_id, float(job.estimated_cost), job.id, description="No result data on finalized task")
                     session.commit()
@@ -254,6 +261,7 @@ def run_job(self, job_id: str):
                     job.completed_at = datetime.now(timezone.utc)
                     if job.provider_address:
                         provider_service.record_provider_failure(session, job.provider_address)
+                        provider_service.evaluate_provider_penalty(session, job.provider_address)
                     if job.estimated_cost and float(job.estimated_cost) > 0:
                         credit_service.refund_credits_sync(session, job.user_id, float(job.estimated_cost), job.id, description="Job timed out")
                     session.commit()
@@ -266,6 +274,7 @@ def run_job(self, job_id: str):
                     job.completed_at = datetime.now(timezone.utc)
                     if job.provider_address:
                         provider_service.record_provider_failure(session, job.provider_address)
+                        provider_service.evaluate_provider_penalty(session, job.provider_address)
                     if job.estimated_cost and float(job.estimated_cost) > 0:
                         credit_service.refund_credits_sync(session, job.user_id, float(job.estimated_cost), job.id, description="OGPU task expired after max requeues")
                 else:
@@ -284,6 +293,7 @@ def run_job(self, job_id: str):
                 job.completed_at = datetime.now(timezone.utc)
                 if job.provider_address:
                     provider_service.record_provider_failure(session, job.provider_address)
+                    provider_service.evaluate_provider_penalty(session, job.provider_address)
 
             session.commit()
 
