@@ -2,16 +2,16 @@
 
 Receives a fine-tuning task from OGPU, detects the available hardware
 (NVIDIA CUDA or AMD ROCm), runs Axolotl training with hardware-specific
-configuration, uploads the result to R2, and returns the output path.
+configuration, uploads the result to R2, and returns the output key.
 
 Hardware detection is automatic — the same worker.py works on both
 NVIDIA and AMD providers without modification.
 """
 
+import base64
 import json
 import os
 import subprocess
-import tempfile
 from pathlib import Path
 
 import ogpu.service
@@ -32,6 +32,7 @@ class FineTuneInput(BaseModel):
 class FineTuneOutput(BaseModel):
     status: str
     output_key: str | None = None
+    adapter_base64: str | None = None
     error: str | None = None
 
 
@@ -196,6 +197,45 @@ warmup_steps: 10
     return str(config_path)
 
 
+def _find_adapter_file(output_dir: Path) -> Path | None:
+    """Find the adapter safetensors file in the output directory.
+
+    Searches recursively for adapter_model.safetensors, adapter_merged.safetensors,
+    or any *.safetensors file. Returns the first match found.
+    """
+    # Priority order: specific names first, then any safetensors
+    priority_names = ["adapter_model.safetensors", "adapter_merged.safetensors"]
+
+    for name in priority_names:
+        for f in output_dir.rglob(name):
+            if f.is_file():
+                return f
+
+    # Fallback: any safetensors file
+    for f in output_dir.rglob("*.safetensors"):
+        if f.is_file():
+            return f
+
+    return None
+
+
+def _encode_adapter_base64(adapter_path: Path, max_size_bytes: int = 50 * 1024 * 1024) -> str | None:
+    """Read adapter file and encode as base64.
+
+    Returns None if the file is too large (>50MB) to encode safely.
+    """
+    file_size = adapter_path.stat().st_size
+    if file_size > max_size_bytes:
+        ogpu.service.logger.warning(
+            "Adapter file too large for base64 encoding: %.1f MB (limit: %.0f MB)",
+            file_size / 1024 / 1024, max_size_bytes / 1024 / 1024,
+        )
+        return None
+
+    with open(adapter_path, "rb") as f:
+        return base64.b64encode(f.read()).decode("ascii")
+
+
 def _upload_to_r2(local_dir: Path, output_prefix: str, max_size_bytes: int = 500 * 1024 * 1024) -> str:
     """Upload the trained adapter to R2.
 
@@ -246,6 +286,8 @@ def finetune(data: FineTuneInput) -> FineTuneOutput:
     """Execute the fine-tuning job.
 
     Automatically detects hardware and configures Axolotl accordingly.
+    Returns the adapter as base64 (for small adapters) or uploads to R2
+    and returns the output key.
     """
     device = _detect_device()
     ogpu.service.logger.info(
@@ -281,14 +323,28 @@ def finetune(data: FineTuneInput) -> FineTuneOutput:
             ogpu.service.logger.error(f"Training failed: {result.stderr}")
             return FineTuneOutput(status="failed", error=result.stderr[:500])
 
-        # 4. Upload result to R2
-        ogpu.service.logger.info("Uploading trained adapter to R2...")
+        # 4. Find and return the adapter
+        ogpu.service.logger.info("Locating trained adapter...")
         output_dir = work_dir / "output"
-        # Use the OGPU task_id as the R2 key prefix to ensure unique paths per job
-        task_id = getattr(ogpu.service, "task_id", "unknown-task")
-        output_key = _upload_to_r2(output_dir / "adapter", task_id)
+        adapter_path = _find_adapter_file(output_dir)
 
-        ogpu.service.logger.info("Training complete. Output: %s", output_key)
+        if adapter_path is None:
+            ogpu.service.logger.error("No adapter safetensors file found in %s", output_dir)
+            return FineTuneOutput(status="failed", error="No adapter file found after training")
+
+        ogpu.service.logger.info("Found adapter: %s (%.1f MB)", adapter_path, adapter_path.stat().st_size / 1024 / 1024)
+
+        # Try to encode as base64 first (for small adapters <50MB)
+        adapter_b64 = _encode_adapter_base64(adapter_path)
+        if adapter_b64:
+            ogpu.service.logger.info("Returning adapter as base64 (%.1f MB encoded)", len(adapter_b64) / 1024 / 1024)
+            return FineTuneOutput(status="completed", adapter_base64=adapter_b64)
+
+        # Fallback: upload to R2 for larger adapters
+        ogpu.service.logger.info("Adapter too large for base64, uploading to R2...")
+        task_id = getattr(ogpu.service, "task_id", "unknown-task")
+        output_key = _upload_to_r2(adapter_path.parent, task_id)
+        ogpu.service.logger.info("Training complete. Output key: %s", output_key)
         return FineTuneOutput(status="completed", output_key=output_key)
 
     except subprocess.TimeoutExpired:
