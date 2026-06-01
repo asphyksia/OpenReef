@@ -136,19 +136,30 @@ class SmartRoute:
 
         await self.db.commit()
 
-    async def check_capacity(self, source_address: str, min_vram_gb: int) -> bool:
+    async def check_capacity(self, source_address: str, min_vram_gb: int, adapter: str = "lora") -> bool:
         """Check if there's at least one active GPU provider with enough VRAM.
 
         Uses cached provider data from the local DB — does NOT sync from on-chain.
         For fresh sync, call sync_all_providers() separately (e.g. via Celery Beat).
 
+        QLoRA is only routed to NVIDIA providers because bitsandbytes does not
+        have stable ROCm binaries for all versions. AMD providers are excluded
+        when adapter == "qlora".
+
         Returns True if capacity exists, False otherwise.
         Providers with unknown VRAM (vram_gb IS NULL) are included optimistically.
         """
+        # QLoRA requires bitsandbytes which is only reliably available on NVIDIA
+        # AMD ROCm support is version-dependent and fragile
+        if adapter == "qlora":
+            env_mask = ENV_NVIDIA  # 2 — NVIDIA only
+        else:
+            env_mask = ENV_NVIDIA | ENV_AMD  # 6 — NVIDIA + AMD
+
         query = select(func.count()).where(
             DBProvider.is_active == True,
             DBProvider.is_blocked == False,
-            text("(environment & 6) != 0"),  # 6 = NVIDIA(2) | AMD(4) — bitwise check
+            text(f"(environment & {env_mask}) != 0"),  # bitwise check
             (DBProvider.vram_gb >= min_vram_gb) | (DBProvider.vram_gb == None),
         )
 

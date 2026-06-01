@@ -112,11 +112,24 @@ def _build_axolotl_config(job_input: FineTuneInput, config_dir: Path) -> str:
 
     Automatically adjusts precision, attention mechanism, and optimizer
     based on the detected hardware (NVIDIA CUDA vs AMD ROCm).
+
+    QLoRA is automatically converted to LoRA on AMD providers because
+    bitsandbytes does not have stable ROCm binaries for all versions.
     """
     device = _detect_device()
     hw = _get_device_config(device)
 
-    adapter_cfg = "qlora" if job_input.adapter == "qlora" else "lora"
+    # QLoRA requires bitsandbytes which is only reliably available on NVIDIA
+    # Fall back to LoRA on AMD providers to avoid runtime failures
+    adapter = job_input.adapter
+    if adapter == "qlora" and device == "amd_rocm":
+        ogpu.service.logger.warning(
+            "QLoRA requested on AMD ROCm — falling back to LoRA "
+            "(bitsandbytes ROCm support is version-dependent and fragile)"
+        )
+        adapter = "lora"
+
+    adapter_cfg = "qlora" if adapter == "qlora" else "lora"
 
     config = f"""
 base_model: {job_input.base_model}
@@ -143,7 +156,7 @@ eval_sample_packing: false
 pad_to_sequence_len: true
 
 {adapter_cfg}: true
-qlora: {job_input.adapter == "qlora"}
+qlora: {adapter == "qlora"}
 lora_r: 32
 lora_alpha: 64
 lora_dropout: 0.05

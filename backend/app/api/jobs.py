@@ -197,10 +197,15 @@ async def confirm_job(
                         detail="OGPU_SOURCE_ADDRESS not configured — cannot check provider capacity",
                     )
                 smart = SmartRoute(db)
-                if not await smart.check_capacity(source_address, base_model.min_vram_gb):
+                # QLoRA is only routed to NVIDIA providers (bitsandbytes ROCm support is fragile)
+                if not await smart.check_capacity(source_address, base_model.min_vram_gb, job_peek.adapter):
+                    if job_peek.adapter == "qlora":
+                        detail = f"No NVIDIA providers available for QLoRA on {base_model.name}. QLoRA requires NVIDIA GPUs. Try LoRA instead."
+                    else:
+                        detail = f"No providers available for {base_model.name} (requires {base_model.min_vram_gb}GB VRAM)"
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
-                        detail=f"No providers available for {base_model.name} (requires {base_model.min_vram_gb}GB VRAM)",
+                        detail=detail,
                     )
 
     job = await job_service.confirm_job(db, user.id, job_id)

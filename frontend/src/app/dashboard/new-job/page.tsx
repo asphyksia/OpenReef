@@ -198,6 +198,15 @@ export default function NewJobPage() {
                 <span className="text-sm font-medium">QLoRA</span>
               </Label>
             </RadioGroup>
+            {adapter === "qlora" && (
+              <Alert className="mt-4 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-700 dark:text-amber-400 text-sm">
+                  QLoRA requires NVIDIA GPUs. On AMD ROCm providers, it will automatically fall back to LoRA.
+                  LoRA uses more VRAM but produces identical results.
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
 

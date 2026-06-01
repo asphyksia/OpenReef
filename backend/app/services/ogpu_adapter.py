@@ -27,6 +27,7 @@ class AxolotlConfig:
     preset: str          # fast, balanced, quality
     adapter: str         # lora, qlora
     output_bucket: str
+    param_count: int = 0  # model size in billions, for batch size adjustment
 
 
 def get_preset_params(preset: str) -> dict:
@@ -47,6 +48,7 @@ def build_task_config(axolotl: AxolotlConfig) -> dict:
             "num_epochs": params["num_epochs"],
             "learning_rate": params["learning_rate"],
             "batch_size": params["batch_size"],
+            "param_count": axolotl.param_count,
             "output_bucket": axolotl.output_bucket,
         },
     }

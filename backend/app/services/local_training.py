@@ -76,7 +76,33 @@ def build_axolotl_yaml_config(
         sdp_attention = True
 
     batch_size = preset_params.get("batch_size", 1)
+
+    # Reduce batch size for large models on AMD ROCm to avoid OOM
+    if device_type == "amd_rocm":
+        param_count = preset_params.get("param_count", 0)
+        if param_count >= 8:
+            batch_size = min(batch_size, 1)
+        elif param_count >= 7:
+            batch_size = min(batch_size, 2)
+
     gradient_accumulation = max(1, 4 // batch_size)
+
+    # Gradient checkpointing: only enable for models >= 7B that need it to fit in VRAM
+    # On AMD ROCm, use_reentrant=true to avoid meta device gradient errors with LoRA
+    param_count = preset_params.get("param_count", 0)
+    needs_gc = param_count >= 7
+
+    if needs_gc:
+        gc = "true"
+        # use_reentrant=true avoids "expected device meta but got cuda:0" errors on ROCm
+        # This is safe for LoRA without unfrozen_parameters
+        gc_kwargs = """
+gradient_checkpointing_kwargs:
+  use_reentrant: true
+"""
+    else:
+        gc = "false"
+        gc_kwargs = ""
 
     yaml_config = f"""base_model: {base_model}
 model_type: AutoModelForCausalLM
@@ -108,8 +134,7 @@ micro_batch_size: {batch_size}
 gradient_accumulation_steps: {gradient_accumulation}
 max_seq_length: 512
 warmup_ratio: 0.1
-gradient_checkpointing: true
-
+gradient_checkpointing: {gc}{gc_kwargs}
 # Output
 output_dir: {output_dir}
 save_strategy: "epoch"
@@ -146,6 +171,7 @@ def launch_training_subprocess(
     # Get preset params
     from app.services.ogpu_adapter import get_preset_params
     preset_params = get_preset_params(preset)
+    preset_params["param_count"] = data.get("param_count", 0)
 
     # Determine optimizer based on device type
     if device_type == "amd_rocm":
