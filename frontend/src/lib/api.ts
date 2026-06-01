@@ -72,7 +72,7 @@ export async function login(email: string, password: string) {
 }
 
 export async function register(email: string, password: string) {
-  return fetchApi<{ message: string }>("/api/auth/register", {
+  return fetchApi<{ message: string; verification_required: boolean }>("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),

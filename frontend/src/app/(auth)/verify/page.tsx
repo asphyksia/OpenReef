@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { verifyEmail } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, CheckCircle2, XCircle, Mail } from "lucide-react";
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const token = searchParams.get("token") || "";
   const [status, setStatus] = useState<"verifying" | "success" | "error">("verifying");
   const [message, setMessage] = useState("");
@@ -31,41 +34,61 @@ function VerifyEmailContent() {
   }, [token]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-6 text-center">
-        {status === "verifying" && (
-          <>
-            <h1 className="text-2xl font-bold">Verifying your email...</h1>
-            <p className="text-muted-foreground">Please wait a moment.</p>
-          </>
-        )}
-
-        {status === "success" && (
-          <>
-            <h1 className="text-2xl font-bold text-green-500">Email verified!</h1>
-            <p className="text-muted-foreground">{message}</p>
-            <Link
-              href="/login"
-              className="inline-block bg-primary text-primary-foreground py-2 px-6 rounded-md font-medium hover:bg-primary/90"
-            >
-              Log in
-            </Link>
-          </>
-        )}
-
-        {status === "error" && (
-          <>
-            <h1 className="text-2xl font-bold text-destructive">Verification failed</h1>
-            <p className="text-muted-foreground">{message}</p>
-            <p className="text-sm text-muted-foreground">
-              The link may have expired.{" "}
-              <Link href="/login" className="text-primary hover:underline">
-                Log in to request a new one.
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1 text-center">
+          {status === "verifying" && (
+            <>
+              <div className="mx-auto mb-2">
+                <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
+              </div>
+              <CardTitle>Verifying your email</CardTitle>
+              <CardDescription>Please wait a moment...</CardDescription>
+            </>
+          )}
+          {status === "success" && (
+            <>
+              <div className="mx-auto mb-2 text-green-600">
+                <CheckCircle2 className="h-10 w-10" />
+              </div>
+              <CardTitle className="text-green-600">Email verified!</CardTitle>
+              <CardDescription>{message}</CardDescription>
+            </>
+          )}
+          {status === "error" && (
+            <>
+              <div className="mx-auto mb-2 text-destructive">
+                <XCircle className="h-10 w-10" />
+              </div>
+              <CardTitle className="text-destructive">Verification failed</CardTitle>
+              <CardDescription>{message}</CardDescription>
+            </>
+          )}
+        </CardHeader>
+        <CardContent className="text-center">
+          {status === "verifying" && (
+            <p className="text-sm text-muted-foreground">This should only take a second.</p>
+          )}
+          {status === "success" && (
+            <Button asChild className="w-full">
+              <Link href="/login">
+                <Mail className="mr-2 h-4 w-4" />
+                Log in
               </Link>
-            </p>
-          </>
-        )}
-      </div>
+            </Button>
+          )}
+          {status === "error" && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                The link may have expired.{" "}
+                <Link href="/login" className="font-medium underline underline-offset-4">
+                  Log in to request a new one.
+                </Link>
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

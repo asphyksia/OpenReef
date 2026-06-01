@@ -1,13 +1,17 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { resendVerification } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { Loader2, Mail, AlertCircle, CheckCircle2 } from "lucide-react";
 
 function VerifyEmailPendingContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const email = searchParams.get("email") || "your email";
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -37,42 +41,50 @@ function VerifyEmailPendingContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-6 text-center">
-        <div>
-          <h1 className="text-2xl font-bold">Check your email</h1>
-          <p className="text-muted-foreground mt-2">
-            We sent a verification link to <strong>{email}</strong>.
-            Click the link to activate your account.
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1 text-center">
+          <CardTitle className="text-2xl font-bold">Check your email</CardTitle>
+          <CardDescription>
+            We sent a verification link to <strong>{email}</strong>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {message && (
+            <Alert className="border-green-500/50 text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <AlertDescription>{message}</AlertDescription>
+            </Alert>
+          )}
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <Button
+            onClick={handleResend}
+            className="w-full"
+            disabled={loading || countdown > 0}
+          >
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {loading
+              ? "Sending..."
+              : countdown > 0
+                ? `Resend available in ${countdown}s`
+                : "Resend verification email"}
+          </Button>
+        </CardContent>
+        <Separator />
+        <CardFooter className="pt-4">
+          <p className="text-sm text-muted-foreground w-full text-center">
+            Already verified?{" "}
+            <Link href="/login" className="text-primary font-medium hover:underline">
+              Log in
+            </Link>
           </p>
-        </div>
-
-        {message && (
-          <div className="bg-green-500/10 text-green-500 text-sm p-3 rounded-md">{message}</div>
-        )}
-        {error && (
-          <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">{error}</div>
-        )}
-
-        <button
-          onClick={handleResend}
-          disabled={loading || countdown > 0}
-          className="w-full bg-primary text-primary-foreground py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50"
-        >
-          {loading
-            ? "Sending..."
-            : countdown > 0
-              ? `Resend available in ${countdown}s`
-              : "Resend verification email"}
-        </button>
-
-        <p className="text-sm text-muted-foreground">
-          Already verified?{" "}
-          <Link href="/login" className="text-primary hover:underline">
-            Log in
-          </Link>
-        </p>
-      </div>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

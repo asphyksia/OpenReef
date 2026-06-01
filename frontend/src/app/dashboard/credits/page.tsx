@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { getBalance, createCheckoutSession, devAddCredits } from "@/lib/api";
 import type { BalanceResponse } from "@/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { PageHeader } from "@/components/page-header";
+import { Loader2, Coins, CreditCard, AlertCircle, Zap, Shield } from "lucide-react";
 
 const presetAmounts = [10, 25, 50, 100];
 
@@ -30,7 +37,6 @@ export default function CreditsPage() {
       const { checkout_url } = await createCheckoutSession(amount);
       window.location.href = checkout_url;
     } catch (err) {
-      // If Stripe fails, fallback to dev mode
       if (err instanceof Error && (err.message.includes("placeholder") || err.message.includes("API keys") || err.message.includes("dev mode"))) {
         setDevMode(true);
         setError("");
@@ -55,119 +61,113 @@ export default function CreditsPage() {
     }
   }
 
+  const handleAmount = (amount: number) => {
+    if (devMode) {
+      handleDevAdd(amount);
+    } else {
+      handleCheckout(amount);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-xl">
-      <h1 className="text-2xl font-bold">Credits</h1>
+      <PageHeader
+        title="Credits"
+        description="Manage your account balance"
+      />
 
       {balance && (
-        <div className="bg-card border rounded-lg p-6 text-center">
-          <div className="text-sm text-muted-foreground">Current Balance</div>
-          <div className="text-4xl font-bold mt-2">${balance.balance.toFixed(2)}</div>
-          <div className="text-xs text-muted-foreground mt-1">USD</div>
-        </div>
+        <Card>
+          <CardHeader className="text-center pb-2">
+            <CardTitle className="flex items-center justify-center gap-2">
+              <Coins className="h-5 w-5" />
+              Current Balance
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-center">
+            <div className="text-4xl font-bold">${balance.balance.toFixed(2)}</div>
+            <div className="text-sm text-muted-foreground mt-1">USD</div>
+          </CardContent>
+        </Card>
       )}
 
-      {devMode ? (
-        <div className="border rounded-lg p-6 bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200">
-          <h2 className="text-sm font-semibold mb-1">Development Mode</h2>
-          <p className="text-xs text-muted-foreground mb-4">
-            Stripe is not configured. Credits are added locally for testing.
-          </p>
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-          {error && (
-            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md mb-3">{error}</div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Add Credits
+          </CardTitle>
+          {devMode && (
+            <CardDescription className="text-yellow-600 dark:text-yellow-400">
+              Development Mode — Credits added locally for testing
+            </CardDescription>
           )}
-
-          <div className="grid grid-cols-2 gap-3 mb-4">
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
             {presetAmounts.map((amount) => (
-              <button
+              <Button
                 key={amount}
-                onClick={() => handleDevAdd(amount)}
-                disabled={devLoading}
-                className="border rounded-lg p-4 text-center hover:bg-accent disabled:opacity-50"
+                variant="outline"
+                className="h-20 flex flex-col gap-1"
+                onClick={() => handleAmount(amount)}
+                disabled={loading || devLoading}
               >
-                <div className="text-xl font-bold">${amount}</div>
-                <div className="text-xs text-muted-foreground">add credits</div>
-              </button>
+                <span className="text-xl font-bold">${amount}</span>
+                <span className="text-xs text-muted-foreground">
+                  {devMode ? "add credits" : "credits"}
+                </span>
+              </Button>
             ))}
           </div>
 
+          <Separator />
+
           <div className="flex gap-3">
-            <input
+            <Input
               type="number"
               min={1}
               step={1}
               value={customAmount}
               onChange={(e) => setCustomAmount(e.target.value)}
               placeholder="Custom amount"
-              className="flex-1 border rounded-md px-3 py-2 text-sm"
             />
-            <button
+            <Button
               onClick={() => {
                 const n = parseFloat(customAmount);
-                if (n > 0) handleDevAdd(n);
+                if (n > 0) handleAmount(n);
               }}
-              disabled={devLoading}
-              className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+              disabled={loading || devLoading}
             >
-              {devLoading ? "Adding..." : "Add"}
-            </button>
+              {(loading || devLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {loading ? "Redirecting..." : devLoading ? "Adding..." : "Add"}
+            </Button>
           </div>
-        </div>
-      ) : (
-        <div className="border rounded-lg p-6">
-          <h2 className="text-sm font-semibold mb-3">Add Credits</h2>
-
-          {error && (
-            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md mb-3">{error}</div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            {presetAmounts.map((amount) => (
-              <button
-                key={amount}
-                onClick={() => handleCheckout(amount)}
-                disabled={loading}
-                className="border rounded-lg p-4 text-center hover:bg-accent disabled:opacity-50"
-              >
-                <div className="text-xl font-bold">${amount}</div>
-                <div className="text-xs text-muted-foreground">credits</div>
-              </button>
-            ))}
+        </CardContent>
+        <CardFooter className="flex flex-col items-start gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <Shield className="h-3 w-3" />
+            Payments processed securely via Stripe
           </div>
-
-          <div className="flex gap-3">
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={customAmount}
-              onChange={(e) => setCustomAmount(e.target.value)}
-              placeholder="Custom amount"
-              className="flex-1 border rounded-md px-3 py-2 text-sm"
-            />
-            <button
-              onClick={() => {
-                const n = parseFloat(customAmount);
-                if (n > 0) handleCheckout(n);
-              }}
-              disabled={loading}
-              className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
-            >
-              {loading ? "Redirecting..." : "Add"}
-            </button>
+          <div className="flex items-center gap-1">
+            <Zap className="h-3 w-3" />
+            Credits added instantly
           </div>
-        </div>
-      )}
+        </CardFooter>
+      </Card>
 
       <div className="text-xs text-muted-foreground">
-        <p>Payments are processed securely via Stripe. Credits are added to your account instantly.</p>
-        <p className="mt-2">
-          Need help?{" "}
-          <a href="https://t.me/openreef" target="_blank" className="text-primary hover:underline">
-            Contact us on Telegram
-          </a>
-        </p>
+        Need help?{" "}
+        <a href="https://t.me/openreef" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+          Contact us on Telegram
+        </a>
       </div>
     </div>
   );

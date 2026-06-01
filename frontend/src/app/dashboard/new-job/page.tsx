@@ -4,6 +4,24 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { listDatasets, listModels, createJob } from "@/lib/api";
 import type { Dataset, ModelsResponse } from "@/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { Loader2, AlertCircle, Settings, Zap, Brain, Database } from "lucide-react";
+
+const presetIcons: Record<string, React.ReactNode> = {
+  fast: <Zap className="h-4 w-4" />,
+  balanced: <Settings className="h-4 w-4" />,
+  quality: <Brain className="h-4 w-4" />,
+};
 
 export default function NewJobPage() {
   const router = useRouter();
@@ -43,124 +61,156 @@ export default function NewJobPage() {
     }
   }
 
-  if (loading) return <p className="text-muted-foreground">Loading...</p>;
+  if (loading) {
+    return (
+      <div className="space-y-6 max-w-xl">
+        <PageHeader title="New Fine-tuning Job" />
+        <LoadingSkeleton rows={5} />
+      </div>
+    );
+  }
 
   const validDatasets = datasets.filter((d) => d.validation_status === "valid");
 
   return (
     <div className="space-y-6 max-w-xl">
-      <h1 className="text-2xl font-bold">New Fine-tuning Job</h1>
+      <PageHeader
+        title="New Fine-tuning Job"
+        description="Configure your training job"
+      />
 
       {error && (
-        <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">{error}</div>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4 border rounded-lg p-6">
-        <div>
-          <label className="text-sm font-medium">Dataset</label>
-          {validDatasets.length === 0 ? (
-            <p className="text-sm text-muted-foreground mt-1">
-              No valid datasets.{" "}
-              <a href="/dashboard/datasets" className="text-primary hover:underline">Upload one first</a>.
-            </p>
-          ) : (
-            <select
-              value={datasetId}
-              onChange={(e) => setDatasetId(e.target.value)}
-              required
-              className="mt-1 w-full border rounded-md px-3 py-2 text-sm"
-            >
-              <option value="">Select a dataset...</option>
-              {validDatasets.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.format}, {d.row_count?.toLocaleString() ?? 0} rows)
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Dataset
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {validDatasets.length === 0 ? (
+              <EmptyState
+                icon={<Database className="h-8 w-8" />}
+                title="No valid datasets"
+                description="Upload a valid dataset before creating a job."
+                action={
+                  <Button asChild variant="outline">
+                    <a href="/dashboard/datasets">Upload dataset</a>
+                  </Button>
+                }
+              />
+            ) : (
+              <Select value={datasetId} onValueChange={setDatasetId} required>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a dataset..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {validDatasets.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name} ({d.format}, {d.row_count?.toLocaleString() ?? 0} rows)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </CardContent>
+        </Card>
 
-        <div>
-          <label className="text-sm font-medium">Base Model</label>
-          <select
-            value={baseModelId}
-            onChange={(e) => setBaseModelId(e.target.value)}
-            required
-            className="mt-1 w-full border rounded-md px-3 py-2 text-sm"
-          >
-            <option value="">Select a model...</option>
-            {modelsData?.models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name} ({m.param_count}B, min {m.min_vram_gb}GB VRAM)
-              </option>
-            ))}
-          </select>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              Base Model
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Select value={baseModelId} onValueChange={setBaseModelId} required>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a model..." />
+              </SelectTrigger>
+              <SelectContent>
+                {modelsData?.models.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name} ({m.param_count}B, min {m.min_vram_gb}GB VRAM)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
 
-        <div>
-          <label className="text-sm font-medium">Preset</label>
-          <div className="mt-2 space-y-2">
-            {modelsData &&
-              Object.entries(modelsData.presets).map(([key, p]) => (
-                <label
-                  key={key}
-                  className={`flex items-start gap-3 border rounded-md p-3 cursor-pointer ${
-                    preset === key ? "border-primary bg-accent" : ""
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="preset"
-                    value={key}
-                    checked={preset === key}
-                    onChange={(e) => setPreset(e.target.value)}
-                    className="mt-0.5"
-                  />
-                  <div>
-                    <div className="text-sm font-medium">{p.label}</div>
-                    <div className="text-xs text-muted-foreground">{p.description}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {p.epochs} epoch{p.epochs > 1 ? "s" : ""} · LR {p.learning_rate}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Training Preset
+            </CardTitle>
+            <CardDescription>
+              Choose a preset based on your needs
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RadioGroup value={preset} onValueChange={setPreset} className="space-y-3">
+              {modelsData &&
+                Object.entries(modelsData.presets).map(([key, p]) => (
+                  <Label
+                    key={key}
+                    className={`flex items-start gap-3 border rounded-lg p-4 cursor-pointer transition-colors ${
+                      preset === key ? "border-primary bg-accent" : "hover:bg-accent/50"
+                    }`}
+                  >
+                    <RadioGroupItem value={key} className="mt-1" />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        {presetIcons[key]}
+                        {p.label}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">{p.description}</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {p.epochs} epoch{p.epochs > 1 ? "s" : ""} · LR {p.learning_rate}
+                      </div>
                     </div>
-                  </div>
-                </label>
-              ))}
-          </div>
-        </div>
+                  </Label>
+                ))}
+            </RadioGroup>
+          </CardContent>
+        </Card>
 
-        <div>
-          <label className="text-sm font-medium">Adapter</label>
-          <div className="mt-2 flex gap-4">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="adapter"
-                value="lora"
-                checked={adapter === "lora"}
-                onChange={(e) => setAdapter(e.target.value)}
-              />
-              <span className="text-sm">LoRA</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="adapter"
-                value="qlora"
-                checked={adapter === "qlora"}
-                onChange={(e) => setAdapter(e.target.value)}
-              />
-              <span className="text-sm">QLoRA</span>
-            </label>
-          </div>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Adapter Type</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RadioGroup value={adapter} onValueChange={setAdapter} className="flex gap-6">
+              <Label className="flex items-center gap-2 cursor-pointer">
+                <RadioGroupItem value="lora" />
+                <span className="text-sm font-medium">LoRA</span>
+              </Label>
+              <Label className="flex items-center gap-2 cursor-pointer">
+                <RadioGroupItem value="qlora" />
+                <span className="text-sm font-medium">QLoRA</span>
+              </Label>
+            </RadioGroup>
+          </CardContent>
+        </Card>
 
-        <button
+        <Separator />
+
+        <Button
           type="submit"
+          className="w-full"
           disabled={submitting || !datasetId || !baseModelId}
-          className="w-full bg-primary text-primary-foreground py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50"
         >
-          {submitting ? "Creating..." : "Create Job"}
-        </button>
+          {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {submitting ? "Creating job..." : "Create Job"}
+        </Button>
       </form>
     </div>
   );
