@@ -8,7 +8,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.provider import Provider as DBProvider
@@ -159,7 +159,7 @@ class SmartRoute:
         query = select(func.count()).where(
             DBProvider.is_active == True,
             DBProvider.is_blocked == False,
-            text(f"(environment & {env_mask}) != 0"),  # bitwise check
+            DBProvider.environment.op("&")(env_mask) != 0,  # bitwise AND check
             (DBProvider.vram_gb >= min_vram_gb) | (DBProvider.vram_gb == None),
         )
 

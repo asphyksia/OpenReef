@@ -128,6 +128,18 @@ def run_job(self, job_id: str):
                     job.completed_at = None
                     session.commit()
                     run_job.apply_async(args=[job_id], countdown=60)
+                else:
+                    # No more retries — refund the user's credits
+                    logger.warning(
+                        "Job %s exceeded max publish retries (%d), refunding credits",
+                        job_id, MAX_PUBLISH_RETRIES,
+                    )
+                    if job.estimated_cost and float(job.estimated_cost) > 0:
+                        credit_service.refund_credits_sync(
+                            session, job.user_id, float(job.estimated_cost), job.id,
+                            description="Job failed: unable to publish OGPU task after max retries"
+                        )
+                    session.commit()
                 return
 
         # Phase 2: All executions (including retries) — poll status
@@ -172,10 +184,10 @@ def run_job(self, job_id: str):
                 result = ogpu_service.get_task_result(job.ogpu_task_address)
                 if result and isinstance(result, dict):
                     if "output_key" in result:
-                        # Mock mode: provider wrote directly to R2
+                        # Mock/local/real mode: provider wrote to R2 and returned the key
                         job.output_r2_key = result["output_key"]
                     else:
-                        # Real mode: bridge IPFS → R2
+                        # Real mode fallback: bridge IPFS → R2
                         output_r2_key = f"models/{job.user_id}/{job.id}/adapter.safetensors"
                         from app.services import ogpu_service as _ogpu
                         adapter = _ogpu.get_adapter()

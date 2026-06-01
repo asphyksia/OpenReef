@@ -8,6 +8,7 @@ celery_app = Celery(
     backend=settings.redis_url,
     include=[
         "app.tasks.training",
+        "app.tasks.maintenance",
     ],
 )
 

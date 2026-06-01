@@ -68,8 +68,12 @@ class Settings(BaseSettings):
                 missing.append("JWT_SECRET")
             if self.provider_api_secret == "dev-secret-change-me":
                 missing.append("PROVIDER_API_SECRET")
-            if self.stripe_secret_key and "placeholder" in self.stripe_secret_key:
-                missing.append("STRIPE_SECRET_KEY (must be a real key)")
+            if not self.stripe_secret_key or "placeholder" in self.stripe_secret_key:
+                missing.append("STRIPE_SECRET_KEY (must be a real key, not empty or placeholder)")
+            if not self.stripe_webhook_secret:
+                missing.append("STRIPE_WEBHOOK_SECRET")
+            if not self.stripe_publishable_key:
+                missing.append("STRIPE_PUBLISHABLE_KEY")
             if self.client_private_key == "":
                 missing.append("CLIENT_PRIVATE_KEY")
             if not self.cookie_secure:
@@ -78,6 +82,8 @@ class Settings(BaseSettings):
                 missing.append("FRONTEND_URL (must be HTTPS in production)")
             if self.api_url.startswith("http://"):
                 missing.append("API_URL (must be HTTPS in production)")
+            if self.email_verification_enabled and not self.resend_api_key:
+                missing.append("RESEND_API_KEY (required when EMAIL_VERIFICATION_ENABLED=true)")
             if missing:
                 raise RuntimeError(
                     f"Missing required settings for production: {', '.join(missing)}"

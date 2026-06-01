@@ -196,14 +196,16 @@ warmup_steps: 10
     return str(config_path)
 
 
-def _upload_to_r2(local_dir: Path, output_bucket: str, job_id: str, max_size_bytes: int = 500 * 1024 * 1024) -> str:
+def _upload_to_r2(local_dir: Path, output_prefix: str, max_size_bytes: int = 500 * 1024 * 1024) -> str:
     """Upload the trained adapter to R2.
 
     Args:
         local_dir: Directory containing the adapter files.
-        output_bucket: R2 bucket name.
-        job_id: Unique job/task identifier for the R2 key.
+        output_prefix: R2 key prefix (e.g. models/{user_id}/{job_id}).
         max_size_bytes: Maximum total upload size (default 500 MB).
+
+    Returns:
+        The R2 key (relative path within the bucket), e.g. models/{user_id}/{job_id}/adapter/adapter_model.safetensors
     """
     import boto3
     from botocore.config import Config
@@ -216,6 +218,7 @@ def _upload_to_r2(local_dir: Path, output_bucket: str, job_id: str, max_size_byt
             f"(limit: {max_size_bytes / 1024 / 1024:.0f} MB)"
         )
 
+    bucket = os.environ.get("R2_BUCKET_NAME", "openreef-models")
     client = boto3.client(
         "s3",
         endpoint_url=os.environ.get("R2_ENDPOINT_URL", ""),
@@ -224,8 +227,7 @@ def _upload_to_r2(local_dir: Path, output_bucket: str, job_id: str, max_size_byt
         config=Config(signature_version="s3v4"),
     )
 
-    bucket = output_bucket or "openreef-models"
-    r2_key = f"{job_id}/adapter/"
+    r2_key = f"{output_prefix}/adapter/"
 
     for f in Path(local_dir).rglob("*"):
         if f.is_file():
@@ -235,7 +237,8 @@ def _upload_to_r2(local_dir: Path, output_bucket: str, job_id: str, max_size_byt
                 bucket,
                 f"{r2_key}{rel_path}",
             )
-    return f"s3://{bucket}/{r2_key}"
+    # Return the key of the main adapter file (what the backend expects)
+    return f"{r2_key}adapter_model.safetensors"
 
 
 @ogpu.service.expose(timeout=7200)
@@ -281,9 +284,9 @@ def finetune(data: FineTuneInput) -> FineTuneOutput:
         # 4. Upload result to R2
         ogpu.service.logger.info("Uploading trained adapter to R2...")
         output_dir = work_dir / "output"
-        # Use the OGPU task_id as the R2 key to ensure unique paths per job
+        # Use the OGPU task_id as the R2 key prefix to ensure unique paths per job
         task_id = getattr(ogpu.service, "task_id", "unknown-task")
-        output_key = _upload_to_r2(output_dir / "adapter", data.output_bucket, task_id)
+        output_key = _upload_to_r2(output_dir / "adapter", task_id)
 
         ogpu.service.logger.info("Training complete. Output: %s", output_key)
         return FineTuneOutput(status="completed", output_key=output_key)
