@@ -87,6 +87,22 @@ export async function getMe() {
   return fetchApi<User>("/api/auth/me");
 }
 
+export async function verifyEmail(token: string) {
+  return fetchApi<{ message: string }>("/api/auth/verify-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function resendVerification(email: string) {
+  return fetchApi<{ message: string }>("/api/auth/resend-verification", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+}
+
 // ── Datasets ────────────────────────────────────────────────────────────
 
 export async function listDatasets() {

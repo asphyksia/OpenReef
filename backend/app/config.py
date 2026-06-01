@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
     api_url: str = "http://localhost:8000"
 
+    # Email (Resend)
+    resend_api_key: str = ""
+    email_from: str = "OpenReef <onboarding@resend.dev>"
+    email_verification_enabled: bool = False
+
+    @property
+    def app_url(self) -> str:
+        """Single base URL for the app (first entry in frontend_url list)."""
+        return self.frontend_url.split(",")[0].strip()
+
     # Cookie settings
     cookie_secure: bool = False  # True in production (requires HTTPS)
     cookie_max_age: int = 7 * 24 * 3600  # 7 days

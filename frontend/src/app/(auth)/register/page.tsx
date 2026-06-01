@@ -17,8 +17,12 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      await register(email, password);
-      router.push("/dashboard");
+      const data = await register(email, password);
+      if (data.verification_required) {
+        router.push(`/verify-email-pending?email=${encodeURIComponent(email)}`);
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
