@@ -60,7 +60,7 @@ async def create_checkout_session(
 
 
 @router.post("/dev-add-credits")
-@limiter.limit("3/minute")
+@limiter.limit("30/minute")
 async def dev_add_credits(
     request: Request,
     body: DevAddCreditsRequest,
