@@ -196,10 +196,25 @@ warmup_steps: 10
     return str(config_path)
 
 
-def _upload_to_r2(local_dir: Path, output_bucket: str, job_id: str) -> str:
-    """Upload the trained adapter to R2."""
+def _upload_to_r2(local_dir: Path, output_bucket: str, job_id: str, max_size_bytes: int = 500 * 1024 * 1024) -> str:
+    """Upload the trained adapter to R2.
+
+    Args:
+        local_dir: Directory containing the adapter files.
+        output_bucket: R2 bucket name.
+        job_id: Unique job/task identifier for the R2 key.
+        max_size_bytes: Maximum total upload size (default 500 MB).
+    """
     import boto3
     from botocore.config import Config
+
+    # Check total size before uploading
+    total_size = sum(f.stat().st_size for f in Path(local_dir).rglob("*") if f.is_file())
+    if total_size > max_size_bytes:
+        raise ValueError(
+            f"Adapter output too large: {total_size / 1024 / 1024:.1f} MB "
+            f"(limit: {max_size_bytes / 1024 / 1024:.0f} MB)"
+        )
 
     client = boto3.client(
         "s3",
@@ -266,7 +281,9 @@ def finetune(data: FineTuneInput) -> FineTuneOutput:
         # 4. Upload result to R2
         ogpu.service.logger.info("Uploading trained adapter to R2...")
         output_dir = work_dir / "output"
-        output_key = _upload_to_r2(output_dir / "adapter", data.output_bucket, "job-placeholder")
+        # Use the OGPU task_id as the R2 key to ensure unique paths per job
+        task_id = getattr(ogpu.service, "task_id", "unknown-task")
+        output_key = _upload_to_r2(output_dir / "adapter", data.output_bucket, task_id)
 
         ogpu.service.logger.info("Training complete. Output: %s", output_key)
         return FineTuneOutput(status="completed", output_key=output_key)

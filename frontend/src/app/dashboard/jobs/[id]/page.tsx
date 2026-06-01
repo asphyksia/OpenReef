@@ -24,6 +24,7 @@ import {
   Settings,
   Calendar,
 } from "lucide-react";
+import { toast } from "sonner";
 
 function formatETA(eta: string): string {
   const target = new Date(eta);
@@ -67,8 +68,11 @@ export default function JobDetailPage() {
     try {
       const updated = await confirmJob(params.id as string);
       setJob(updated);
+      toast.success("Job confirmed", { description: "Training is starting..." });
     } catch (err) {
-      console.error("Failed to confirm job:", err);
+      toast.error("Failed to confirm job", {
+        description: err instanceof Error ? err.message : "An unexpected error occurred",
+      });
     } finally {
       setActionLoading(false);
     }
@@ -79,8 +83,11 @@ export default function JobDetailPage() {
     try {
       const updated = await cancelJob(params.id as string);
       setJob(updated);
+      toast.success("Job cancelled", { description: "Credits will be refunded based on the current phase." });
     } catch (err) {
-      console.error("Failed to cancel job:", err);
+      toast.error("Failed to cancel job", {
+        description: err instanceof Error ? err.message : "An unexpected error occurred",
+      });
     } finally {
       setActionLoading(false);
       setShowCancelDialog(false);

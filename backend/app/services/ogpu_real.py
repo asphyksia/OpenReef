@@ -11,7 +11,7 @@ import logging
 import os
 import time
 from urllib.parse import urlparse
-from ipaddress import ip_address, IPv4Address
+from ipaddress import ip_address, IPv4Address, IPv6Address
 
 import requests
 from ogpu.chain import ChainConfig, ChainId
@@ -73,7 +73,7 @@ def _is_safe_url(url: str) -> bool:
         # Check if it's a private IP (literal)
         try:
             ip = ip_address(hostname)
-            if isinstance(ip, IPv4Address) and (
+            if isinstance(ip, (IPv4Address, IPv6Address)) and (
                 ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
             ):
                 return False
@@ -83,7 +83,7 @@ def _is_safe_url(url: str) -> bool:
                 import socket
                 resolved = socket.gethostbyname(hostname)
                 ip = ip_address(resolved)
-                if isinstance(ip, IPv4Address) and (
+                if isinstance(ip, (IPv4Address, IPv6Address)) and (
                     ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
                 ):
                     return False
