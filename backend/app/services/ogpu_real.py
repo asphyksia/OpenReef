@@ -229,11 +229,23 @@ class RealOGPUAdapter(OGPUAdapter):
         artifact_bytes = None
 
         if adapter_base64:
+            # Validate base64 string size before decoding to prevent memory exhaustion
+            # base64 encodes 3 bytes as 4 chars, so max chars = MAX_BYTES * 4/3
+            max_base64_chars = int(MAX_ARTIFACT_DOWNLOAD_BYTES * 4 / 3) + 1024
+            if len(adapter_base64) > max_base64_chars:
+                logger.error("adapter_base64 too large: %d chars (limit: %d)", len(adapter_base64), max_base64_chars)
+                return None
+
             import base64
             try:
                 artifact_bytes = base64.b64decode(adapter_base64)
             except Exception as e:
                 logger.error("Failed to decode adapter_base64: %s", e)
+                return None
+
+            # Double-check decoded size
+            if len(artifact_bytes) > MAX_ARTIFACT_DOWNLOAD_BYTES:
+                logger.error("Decoded artifact too large: %d bytes", len(artifact_bytes))
                 return None
         elif adapter_url:
             if not _is_safe_url(adapter_url):

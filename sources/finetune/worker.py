@@ -236,25 +236,24 @@ def _encode_adapter_base64(adapter_path: Path, max_size_bytes: int = 50 * 1024 *
         return base64.b64encode(f.read()).decode("ascii")
 
 
-def _upload_to_r2(local_dir: Path, output_prefix: str, max_size_bytes: int = 500 * 1024 * 1024) -> str:
-    """Upload the trained adapter to R2.
+def _upload_adapter_to_r2(adapter_path: Path, output_prefix: str, max_size_bytes: int = 500 * 1024 * 1024) -> str:
+    """Upload a single adapter file to R2.
 
     Args:
-        local_dir: Directory containing the adapter files.
+        adapter_path: Path to the adapter safetensors file.
         output_prefix: R2 key prefix (e.g. models/{user_id}/{job_id}).
-        max_size_bytes: Maximum total upload size (default 500 MB).
+        max_size_bytes: Maximum file size (default 500 MB).
 
     Returns:
-        The R2 key (relative path within the bucket), e.g. models/{user_id}/{job_id}/adapter/adapter_model.safetensors
+        The exact R2 key of the uploaded file.
     """
     import boto3
     from botocore.config import Config
 
-    # Check total size before uploading
-    total_size = sum(f.stat().st_size for f in Path(local_dir).rglob("*") if f.is_file())
-    if total_size > max_size_bytes:
+    file_size = adapter_path.stat().st_size
+    if file_size > max_size_bytes:
         raise ValueError(
-            f"Adapter output too large: {total_size / 1024 / 1024:.1f} MB "
+            f"Adapter file too large: {file_size / 1024 / 1024:.1f} MB "
             f"(limit: {max_size_bytes / 1024 / 1024:.0f} MB)"
         )
 
@@ -267,18 +266,10 @@ def _upload_to_r2(local_dir: Path, output_prefix: str, max_size_bytes: int = 500
         config=Config(signature_version="s3v4"),
     )
 
-    r2_key = f"{output_prefix}/adapter/"
-
-    for f in Path(local_dir).rglob("*"):
-        if f.is_file():
-            rel_path = str(f.relative_to(local_dir))
-            client.upload_file(
-                str(f),
-                bucket,
-                f"{r2_key}{rel_path}",
-            )
-    # Return the key of the main adapter file (what the backend expects)
-    return f"{r2_key}adapter_model.safetensors"
+    # Always standardize the R2 key name regardless of the actual filename
+    r2_key = f"{output_prefix}/adapter/adapter_model.safetensors"
+    client.upload_file(str(adapter_path), bucket, r2_key)
+    return r2_key
 
 
 @ogpu.service.expose(timeout=7200)
@@ -343,7 +334,7 @@ def finetune(data: FineTuneInput) -> FineTuneOutput:
         # Fallback: upload to R2 for larger adapters
         ogpu.service.logger.info("Adapter too large for base64, uploading to R2...")
         task_id = getattr(ogpu.service, "task_id", "unknown-task")
-        output_key = _upload_to_r2(adapter_path.parent, task_id)
+        output_key = _upload_adapter_to_r2(adapter_path, task_id)
         ogpu.service.logger.info("Training complete. Output key: %s", output_key)
         return FineTuneOutput(status="completed", output_key=output_key)
 

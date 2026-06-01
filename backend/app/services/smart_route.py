@@ -124,15 +124,30 @@ class SmartRoute:
         return await asyncio.to_thread(_fetch)
 
     async def sync_all_providers(self, source_address: str) -> None:
-        """Sync all providers registered to our source from on-chain."""
+        """Sync all providers registered to our source from on-chain.
+
+        Also marks providers as inactive if they are no longer registered
+        to the source (e.g. expelled, unregistered, or disconnected).
+        """
         registrants = await self._get_source_registrants(source_address)
         logger.info("Found %d registrants for source %s", len(registrants), source_address)
+
+        registrant_set = set(registrants)
 
         for addr in registrants:
             try:
                 await self.sync_provider(addr, source_address)
             except Exception as e:
                 logger.warning("Failed to sync provider %s: %s", addr, e)
+
+        # Mark providers as inactive if they're no longer registered to this source
+        from sqlalchemy import update
+        await self.db.execute(
+            update(DBProvider)
+            .where(DBProvider.is_active == True)
+            .where(DBProvider.address.notin_(registrant_set))
+            .values(is_active=False)
+        )
 
         await self.db.commit()
 
