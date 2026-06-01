@@ -215,9 +215,12 @@ async def confirm_job(
     if job.status == "queued" and job.ogpu_task_address is None:
         from app.tasks.training import run_job
 
-        # Fire Celery task after a short delay to ensure the commit is visible to workers
+        # Fire Celery task after a delay to ensure the commit is visible to workers.
+        # The task itself has robust guards (FOR UPDATE NOWAIT, idempotency checks)
+        # so even if it arrives early, it will skip gracefully rather than fail.
+        # countdown=5 provides a safe margin for commit propagation.
         job_id_str = str(job.id)
-        run_job.apply_async(args=[job_id_str], countdown=3)
+        run_job.apply_async(args=[job_id_str], countdown=5)
 
     return _to_response(job)
 

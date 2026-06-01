@@ -10,7 +10,7 @@ from app.database import get_db
 from app.dependencies import clear_auth_cookies, get_current_user
 from app.limiter import limiter
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RegisterRequest
+from app.schemas.auth import LoginRequest, RegisterRequest, VerifyEmailRequest, ResendVerificationRequest
 from app.schemas.user import UserResponse
 from app.services import auth_service, credit_service, email_service
 
@@ -91,15 +91,13 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
 
 
 @router.post("/verify-email", status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def verify_email(
-    body: dict,
+    request: Request,
+    body: VerifyEmailRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    token = body.get("token", "")
-    if not token:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token is required")
-
-    user_id = auth_service.decode_verification_token(token)
+    user_id = auth_service.decode_verification_token(body.token)
     if not user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token")
 
@@ -120,25 +118,18 @@ async def verify_email(
 @limiter.limit("3/hour")
 async def resend_verification(
     request: Request,
-    body: dict,
+    body: ResendVerificationRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    email = body.get("email", "")
-    if not email:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is required")
-
-    result = await db.execute(select(User).where(User.email == email))
+    # Always return 200 to prevent user enumeration
+    result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    if user.is_verified:
-        return {"message": "Email already verified"}
+    if user and not user.is_verified:
+        verification_token = auth_service.create_verification_token(str(user.id))
+        email_sent = await email_service.send_verification_email(user.email, verification_token)
+        if not email_sent:
+            logger.warning("Failed to resend verification email to %s", user.email)
 
-    verification_token = auth_service.create_verification_token(str(user.id))
-    email_sent = await email_service.send_verification_email(user.email, verification_token)
-    if not email_sent:
-        logger.warning("Failed to resend verification email to %s", user.email)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send email")
-
-    return {"message": "Verification email sent"}
+    # Generic response regardless of whether user exists or is already verified
+    return {"message": "If an account exists with this email, a verification link has been sent"}

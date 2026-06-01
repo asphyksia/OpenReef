@@ -1,3 +1,4 @@
+import html
 import httpx
 import logging
 
@@ -18,6 +19,8 @@ async def send_verification_email(to_email: str, token: str) -> bool:
         return False
 
     verify_url = f"{settings.app_url}/verify?token={token}"
+    # Escape URL to prevent XSS if app_url is misconfigured
+    safe_url = html.escape(verify_url)
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -35,14 +38,14 @@ async def send_verification_email(to_email: str, token: str) -> bool:
                     <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
                         <h2>Welcome to OpenReef</h2>
                         <p>Thanks for signing up. Please verify your email address by clicking the button below:</p>
-                        <a href="{verify_url}"
+                        <a href="{safe_url}"
                            style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #fff;
                                   text-decoration: none; border-radius: 6px; margin: 16px 0;">
                             Verify Email
                         </a>
                         <p style="color: #666; font-size: 14px;">
                             If the button doesn't work, paste this link into your browser:<br>
-                            <a href="{verify_url}">{verify_url}</a>
+                            <a href="{safe_url}">{safe_url}</a>
                         </p>
                         <p style="color: #999; font-size: 12px; margin-top: 24px;">
                             This link expires in 24 hours. If you didn't create an OpenReef account, ignore this email.
