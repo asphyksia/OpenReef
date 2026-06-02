@@ -2,7 +2,7 @@
 
 [![Build with Ona](https://ona.com/build-with-ona.svg)](https://app.ona.com/#https://github.com/asphyksia/OpenReef)
 
-<img src="openreef_logo.png" alt="OpenReef" width="256" />
+![OpenReef](openreef_logo.png)
 
 # OpenReef
 
