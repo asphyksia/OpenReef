@@ -1,154 +1,185 @@
-# OpenReef
+<div align="center">
 
 [![Build with Ona](https://ona.com/build-with-ona.svg)](https://app.ona.com/#https://github.com/asphyksia/OpenReef)
 
-**Simple, affordable AI fine-tuning on decentralized GPU infrastructure.**
+# OpenReef
 
-OpenReef is a web platform built on the [OpenGPU Network](https://opengpu.network) that turns the complex process of fine-tuning AI models into a simple web experience: upload a dataset, pick a model, launch a job, and download the trained adapter. No terminal, no YAML, no headaches.
+**Fine-tune open-source AI models. No terminal. No YAML. No GPU required.**
 
----
+Built on [OpenGPU Network](https://opengpu.network) · Decentralized compute · Pay only what you use
 
-## What it does
+[![CI](https://img.shields.io/github/actions/workflow/status/asphyksia/OpenReef/test.yml?branch=main&label=CI&style=flat-square&color=01696f)](https://github.com/asphyksia/OpenReef/actions)
+[![Tests](https://img.shields.io/badge/tests-115%20passing-01696f?style=flat-square)](https://github.com/asphyksia/OpenReef/actions)
+[![Docker](https://img.shields.io/badge/docker-cuda%20%7C%20rocm-01696f?style=flat-square&logo=docker&logoColor=white)](https://github.com/asphyksia/OpenReef/pkgs/container/finetune-worker)
+[![Python](https://img.shields.io/badge/python-3.12-01696f?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-async-01696f?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 
-OpenReef lets anyone — developers, researchers, students, indie hackers — fine-tune open-source AI models using decentralized GPU providers. You pay only for what you use, with no subscriptions or markup pricing.
-
-**The flow:**
-
-1. Register with email/password
-2. Upload a dataset (JSONL, CSV, TXT)
-3. Pick a base model and training preset
-4. See the estimated cost, confirm, and launch
-5. Track progress in real time
-6. Download your trained adapter
-
-All compute runs on the decentralized OpenGPU Network — providers with NVIDIA or AMD GPUs execute your training jobs automatically.
+</div>
 
 ---
 
-## Features
+## What is OpenReef?
 
-### Core
-- **Auth** — email/password with httpOnly JWT cookies + CSRF double-submit
-- **Datasets** — upload JSONL/CSV/TXT with streaming validation (up to 500 MB, 100k rows) and secure presigned downloads
-- **Fine-tuning** — LoRA & QLoRA with 3 presets (Fast, Balanced, Quality) for 1.5B–70B models
-- **Job tracking** — 10 states with real-time progress polling and dynamic ETA
-- **Payments** — Stripe Checkout + internal USD credits with append-only ledger
-- **Refunds** — automatic phase-based refunds (100% pending / 50% queued / 0% running)
+OpenReef is a web platform that turns fine-tuning open-source AI models into a simple four-step experience. Upload a dataset, pick a model, confirm the cost, and download your trained adapter. All compute runs on the decentralized [OpenGPU Network](https://opengpu.network) — no cloud accounts, no GPU setup, no subscriptions.
 
-### SmartRoute
-- **Pre-flight capacity check** — validates provider availability before charging the user
-- **Hardware discovery** — reads provider GPU specs (model, VRAM) from OGPU on-chain + IPFS
-- **Bitwise environment matching** — correctly handles NVIDIA (2), AMD (4), and combined environments
-- **Auto-blocking** — providers with >50% fail rate (min 5 jobs) are automatically blocked
-- **Stale job cleanup** — periodic detection of jobs without heartbeat (>5 min) with automatic refund
+**Target audience:** indie developers, researchers, students, and small teams who want to work with open-source models without paying enterprise infrastructure prices.
 
-### Provider Reliability
-- **Auto-requeue** — if a provider abandons, the job goes back to queued (max 3 attempts)
-- **Full refund** — after max attempts, job fails and user gets 100% refund
-- **Reputation tracking** — completed/failed/abandoned counters per provider address
-- **Artifact validation** — output verified in storage before marking job completed (existence, min 1 KB)
-- **Dynamic timeouts** — per-job limits based on preset + model size (7B fast: 2h, 13B quality: 16h)
-- **Heartbeat API** — providers send keepalive pings during training
+---
 
-### Security
-- **httpOnly JWT cookies** + CSRF double-submit (no localStorage)
-- **SSE-AES256** encryption at rest (conditional — only on non-local endpoints)
-- **Presigned URLs** with expiry for all downloads (datasets: 1h, artifacts: 1h)
-- **Race condition prevention** with `SELECT ... FOR UPDATE` on critical operations
-- **Append-only credit ledger** — balance is always `SUM(amount)`, never a mutable column
-- **Stripe webhook idempotency** via `processed_events` table
-- **Ownership enforcement** — users only access their own datasets and jobs
+## How it works
 
-### Dataset Intelligence
-- **Token estimation** — tiktoken (cl100k_base) with streaming sampling every 10th row
-- **Format validation** — JSONL structure, CSV columns, TXT line length
-- **Size limits** — 500 MB max, 100k rows max, 4096 tokens per example max
+```
+  Upload dataset        Pick model + preset     Confirm & launch
+  (JSONL/CSV/TXT)  →   (1.5B–70B, LoRA/QLoRA)  →  (see price first)
+         ↓
+  SmartRoute finds an available GPU provider on OGPU
+         ↓
+  Axolotl runs training — hardware-aware (NVIDIA CUDA / AMD ROCm)
+         ↓
+  Download your trained adapter (presigned URL, secure)
+```
+
+Job states: `pending` → `validating` → `queued` → `provisioning` → `running` → `checkpointing` → `completed`
+
+Automatic failover: if a provider drops, the job requeues (max 3 attempts). If all fail, 100% refund.
+
+---
+
+## Pricing
+
+| Model | Preset | Est. time | Price |
+|-------|--------|-----------|-------|
+| 7B | Fast | ~1h | $0.53 |
+| 7B | Balanced | ~2h | $1.05 |
+| 7B | Quality | ~4h | $2.10 |
+| 13B | Fast | ~1h | $1.05 |
+| 13B | Balanced | ~2h | $2.10 |
+| 13B | Quality | ~4h | $4.20 |
+
+40–70% cheaper than centralized alternatives. Provider gets 70%, platform keeps 25%, 5% goes to a refund buffer.
 
 ---
 
 ## Stack
 
 | Layer | Technology |
-|---|---|
-| Frontend | Next.js 15 + TypeScript + Tailwind CSS |
-| Backend | FastAPI + SQLAlchemy 2.0 (async with asyncpg) |
-| Database | PostgreSQL 16 (10 Alembic migrations) |
-| Queue | Celery + Redis (auto-rescheduling, no beat needed) |
-| Compute | OpenGPU Network (mock / local / real adapters) |
-| Training | Axolotl (LoRA / QLoRA) with hardware-aware config |
-| Payments | Stripe Checkout (credits system) |
-| Storage | MinIO (dev) / Cloudflare R2 (prod) — S3-compatible via boto3 |
-| Tokenizer | tiktoken (cl100k_base) for dataset token estimation |
+|-------|------------|
+| Frontend | Next.js 15 + TypeScript + Tailwind CSS + shadcn/ui |
+| Backend | FastAPI + SQLAlchemy 2.0 async (asyncpg) |
+| Database | PostgreSQL 16 — 12 Alembic migrations |
+| Queue | Celery + Redis — auto-rescheduling + Beat for maintenance |
+| Training | Axolotl (LoRA / QLoRA) — hardware-aware config generation |
+| Compute | OpenGPU Network SDK v0.2.1 (mock / local / real adapters) |
+| Storage | MinIO (dev) / Cloudflare R2 (prod) — same code, different endpoint |
+| Payments | Stripe Checkout + internal USD credit ledger (append-only) |
+| CI/CD | GitHub Actions — PostgreSQL + Redis services, 115 tests |
+| Production | Docker Compose + Gunicorn + Nginx + deploy script |
 
 ---
 
 ## Architecture
 
 ```
-Frontend (Next.js 15)
-      ↓  JWT httpOnly cookies + CSRF double-submit
+Frontend (Next.js 15 + shadcn/ui)
+      ↓  httpOnly JWT cookies + CSRF double-submit
 Backend API (FastAPI + SQLAlchemy async)
-      ↓                    ↕
-PostgreSQL  ←→ Redis/Celery  ←→ MinIO/R2 (S3-compatible)
+      ↓                          ↕
+PostgreSQL  ←→  Redis / Celery  ←→  MinIO / Cloudflare R2
       ↓
-SmartRoute (pre-flight capacity check)
+SmartRoute — pre-flight capacity check (VRAM, provider reputation, availability)
       ↓
-Job Orchestrator (Celery task auto-rescheduling)
+Job Orchestrator — Celery task with auto-rescheduling
       ↓
-OGPU Adapter (mock dev / local machine / real prod)
+OGPU Adapter — mock (dev) / local (machine) / real (on-chain)
       ↓
-Axolotl + dataset + base model (hardware-aware: NVIDIA CUDA / AMD ROCm)
+Axolotl + dataset + base model
+Hardware-aware: NVIDIA (bf16 + flash-attn) / AMD ROCm (fp16 + sdp-attn)
       ↓
-Output on R2 → user download
+Output → R2 / MinIO → presigned download URL
 ```
 
 ### OGPU Adapter Pattern
 
-The backend uses a facade (`ogpu_service`) with swappable adapters controlled by a single env var:
+Three swappable adapters, one env var:
 
-| Adapter | Use case | Behavior |
-|---|---|---|
-| `MockOGPUAdapter` | Development | Simulates full job lifecycle in ~30 seconds |
-| `LocalOGPUAdapter` | Local machine | Runs Axolotl directly, detects NVIDIA/AMD/CPU |
-| `RealOGPUAdapter` | Production | Uses OGPU SDK v0.2.1 for on-chain task publishing |
+| Adapter | `OGPU_ADAPTER=` | Behavior |
+|---------|-----------------|----------|
+| `MockOGPUAdapter` | `mock` (default) | Full lifecycle simulation in ~30s, no OGPU connection |
+| `LocalOGPUAdapter` | `local` | Runs Axolotl directly on the host machine, auto-detects hardware |
+| `RealOGPUAdapter` | `real` | OGPU SDK v0.2.1 — publishes on-chain tasks with $OGPU escrow |
 
-Switch: `OGPU_ADAPTER=mock` (default), `local`, or `real`.
+---
+
+## Features
+
+### Core
+- **Auth** — email/password, httpOnly JWT cookies, CSRF double-submit, email verification (Resend)
+- **Datasets** — streaming upload + validation (JSONL/CSV/TXT, 500 MB max, 100k rows), token estimation via tiktoken
+- **Fine-tuning** — LoRA & QLoRA, 3 presets (Fast / Balanced / Quality), 1.5B–70B models
+- **Job tracking** — 10 states, real-time polling, dynamic ETA
+- **Payments** — Stripe Checkout, internal USD credits, append-only ledger, phase-based refunds
+
+### SmartRoute
+- Pre-flight capacity check — validates provider availability **before** charging the user
+- Hardware discovery — reads GPU specs (model, VRAM) from OGPU on-chain + IPFS
+- Bitwise environment matching — correctly handles NVIDIA (env 2), AMD (env 4), and combined
+- Auto-blocking — providers with >50% fail rate (min 5 jobs) are automatically excluded
+
+### Provider Reliability
+- Auto-requeue — if a provider drops, job goes back to queued (max 3 attempts, then full refund)
+- Reputation tracking — completed / failed / abandoned counters per provider address
+- Artifact validation — output verified in storage before marking job completed (existence + min 1 KB)
+- Dynamic timeouts — `7B fast: 2h`, `13B quality: 16h`
+- Zombie detection — detects crashed training processes and handles them gracefully
+- Heartbeat API — providers send keepalive pings during training
+
+### Security
+- httpOnly JWT cookies + CSRF double-submit (no localStorage)
+- `hmac.compare_digest()` for all secret comparisons (timing-safe)
+- `yaml.safe_dump()` for Axolotl config generation (injection-safe)
+- `SELECT ... FOR UPDATE` on all critical financial operations (race condition prevention)
+- Append-only credit ledger — balance is always `SUM(amount)`, never a mutable column
+- Stripe webhook idempotency via `processed_events` table
+- SSRF protection — URL validation + private IP blocking for artifact downloads
+- SSE-AES256 encryption at rest (conditional, non-local endpoints only)
+- Ownership enforcement — users only access their own datasets and jobs
+- Rate limiting on all mutation endpoints (auth, payments, jobs, datasets, providers)
+
+### Admin & Analytics
+- Health endpoints — `/health` (basic), `/health/ready` (infrastructure checks, returns 503 on failure)
+- Admin metrics — `/admin/metrics` (usage stats, bearer-protected)
+- Job metrics CSV export — `/admin/job-metrics` (anonymized data for pricing & efficiency analysis)
 
 ---
 
 ## OGPU Sources
 
-OpenReef publishes a single source on-chain that supports both NVIDIA and AMD providers through `ImageEnvironments`:
+OpenReef registers a single source on-chain supporting both NVIDIA and AMD providers via `ImageEnvironments`:
 
 ```
 sources/
 └── finetune/
-    ├── docker-compose-nvidia.yml   # NVIDIA CUDA providers
-    ├── docker-compose-amd.yml      # AMD ROCm providers
     ├── Dockerfile                  # NVIDIA CUDA image
     ├── Dockerfile.rocm             # AMD ROCm image
-    └── worker.py                   # Hardware-aware fine-tune worker
+    ├── docker-compose-nvidia.yml   # Compose for NVIDIA providers
+    ├── docker-compose-amd.yml      # Compose for AMD providers
+    └── worker.py                   # Hardware-aware training worker
 ```
 
-### How it works
-
-1. OpenReef publishes the source on-chain with both compose URLs
-2. Providers register via `management.opengpu.network/sources` — the Provider App auto-detects their hardware
-3. NVIDIA providers get the NVIDIA compose file, AMD providers get the AMD compose file
-4. The worker detects hardware at runtime and configures Axolotl automatically:
+The worker auto-detects hardware at runtime and adjusts Axolotl config automatically:
 
 | Hardware | Precision | Attention | Optimizer |
-|---|---|---|---|
-| NVIDIA CUDA | bf16 | flash-attention | adamw_bnb_8bit |
+|----------|-----------|-----------|-----------|
+| NVIDIA CUDA | bf16 | flash-attention | paged_adamw_8bit |
 | AMD ROCm | fp16 | sdp_attention | adamw_torch |
 
-Compose files are hosted on GitHub raw and verified accessible:
-- NVIDIA: `raw.githubusercontent.com/.../docker-compose-nvidia.yml`
-- AMD: `raw.githubusercontent.com/.../docker-compose-amd.yml`
+Docker images published to GHCR with `pull_policy: always` — providers always pull the latest image:
+- `ghcr.io/asphyksia/finetune-worker:cuda-latest`
+- `ghcr.io/asphyksia/finetune-worker:rocm-latest`
 
 ---
 
-## Quick start
+## Quick Start
 
 ```bash
 # 1. Start infrastructure (PostgreSQL, Redis, MinIO)
@@ -157,23 +188,30 @@ Compose files are hosted on GitHub raw and verified accessible:
 # 2. Start all services (backend, Celery worker, Next.js frontend)
 ./scripts/start-all.sh
 
-# 3. Open the app
-# Frontend: http://127.0.0.1:3000
-# API docs: http://127.0.0.1:8000/docs
-# Flower:   http://127.0.0.1:5555
+# 3. Open
+#   Frontend:  http://127.0.0.1:3000
+#   API docs:  http://127.0.0.1:8000/docs
+#   Flower:    http://127.0.0.1:5555
 
-# 4. Stop everything
+# 4. Run tests
+./scripts/test.sh
+
+# 5. Stop everything
 ./scripts/stop-all.sh
 ```
 
-Manual start (separate terminals):
+<details>
+<summary>Manual start (separate terminals)</summary>
 
 ```bash
+# Infrastructure
+docker compose up -d postgres redis minio
+
 # Backend
 cd backend && source .venv/bin/activate
 PYTHONPATH=. uvicorn app.main:app --reload --port 8000
 
-# Celery worker (MUST run from backend/ directory)
+# Celery worker
 cd backend && source .venv/bin/activate
 PYTHONPATH=. celery -A app.tasks.celery_app worker --loglevel=info --concurrency=1
 
@@ -181,44 +219,76 @@ PYTHONPATH=. celery -A app.tasks.celery_app worker --loglevel=info --concurrency
 cd frontend && npm run dev
 ```
 
+</details>
+
 ---
 
-## Project structure
+## Production Deploy
+
+```bash
+# 1. Copy and fill in production environment variables
+cp .env.prod.example .env.prod
+# Edit .env.prod with real values (R2, Stripe, JWT secret, etc.)
+
+# 2. Deploy all services
+./scripts/deploy.sh deploy
+
+# 3. Check status
+./scripts/deploy.sh status
+
+# 4. View logs
+./scripts/deploy.sh logs backend
+
+# 5. Stop everything
+./scripts/deploy.sh stop
+```
+
+Includes: PostgreSQL, Redis, Backend (Gunicorn + 4 Uvicorn workers), Celery Worker, Celery Beat, Frontend (standalone), Nginx (reverse proxy + rate limiting + SSL ready).
+
+---
+
+## Become a Provider
+
+Have a GPU? Earn $OGPU tokens by running fine-tuning jobs.
+
+→ [Provider Onboarding Guide](docs/provider-onboarding.md)
+
+---
+
+## Project Structure
 
 ```
 OpenReef/
 ├── backend/
 │   ├── app/
-│   │   ├── api/          # FastAPI routers (auth, datasets, jobs, payments, providers, models)
-│   │   ├── models/       # SQLAlchemy models (user, dataset, job, credit_ledger, provider, base_model)
-│   │   ├── schemas/      # Pydantic request/response models
-│   │   ├── services/     # Business logic (auth, credits, datasets, jobs, OGPU adapters, smart_route, pricing, providers, storage)
-│   │   ├── tasks/        # Celery tasks (training lifecycle, stale cleanup)
-│   │   ├── config.py     # Environment settings (pydantic-settings)
-│   │   ├── database.py   # Async DB engine + session
-│   │   ├── dependencies.py # Auth, CSRF
-│   │   └── main.py       # FastAPI app, routers, CORS, rate limiting
-│   ├── alembic/          # Database migrations (10 migrations)
-│   ├── requirements.txt
-│   └── .env
+│   │   ├── api/            # FastAPI routers (auth, datasets, jobs, payments, providers, models, health)
+│   │   ├── models/         # SQLAlchemy models
+│   │   ├── schemas/        # Pydantic request/response models
+│   │   ├── services/       # Business logic (auth, credits, jobs, OGPU adapters, smart_route, pricing, storage)
+│   │   ├── tasks/          # Celery tasks (training lifecycle, stale cleanup, maintenance)
+│   │   ├── config.py       # Environment settings (pydantic-settings)
+│   │   ├── database.py     # Async DB engine + session factory
+│   │   ├── dependencies.py # Auth + CSRF middleware
+│   │   └── main.py         # FastAPI app, routers, CORS, rate limiting
+│   ├── alembic/            # 12 database migrations
+│   ├── tests/              # 115 tests (API, services, tasks, health)
+│   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── app/          # Next.js pages (auth, dashboard, datasets, jobs, credits, new-job)
-│   │   ├── lib/          # API client (JWT cookies + CSRF)
-│   │   └── types/        # TypeScript interfaces
+│   │   ├── app/            # Next.js pages (auth, dashboard, datasets, jobs, credits, new-job)
+│   │   ├── lib/            # API client (JWT cookies + CSRF)
+│   │   ├── components/     # shadcn/ui components
+│   │   └── types/          # TypeScript interfaces
 │   └── package.json
-├── sources/              # OGPU source definitions
-│   ├── README.md
-│   └── finetune/         # Fine-tuning source (NVIDIA + AMD)
-│       ├── docker-compose-nvidia.yml
-│       ├── docker-compose-amd.yml
-│       ├── Dockerfile
-│       ├── Dockerfile.rocm
-│       └── worker.py
-├── scripts/              # Dev helper scripts (setup, start-all, stop-all)
-├── docker-compose.yml    # PostgreSQL, Redis, MinIO
-├── .env.example
-└── .gitignore
+├── sources/
+│   └── finetune/           # OGPU source — NVIDIA + AMD workers
+├── scripts/                # Dev + deploy helpers (setup, start-all, stop-all, test, deploy)
+├── nginx/                  # Nginx config (reverse proxy + rate limiting + SSL)
+├── docker-compose.yml      # Dev infrastructure (PostgreSQL, Redis, MinIO)
+├── docker-compose.prod.yml # Production compose
+├── .github/workflows/      # CI: test.yml + docker-images.yml
+├── pyproject.toml          # Project config + pytest settings
+└── .env.example
 ```
 
 ---
@@ -226,15 +296,49 @@ OpenReef/
 ## Limits
 
 | Scope | Limit |
-|---|---|
+|-------|-------|
 | Active jobs per user | 1 |
 | Dataset size | 500 MB |
 | Dataset rows | 100,000 |
 | Tokens per example | ~4,096 |
-| Configuration | Presets only (no custom hyperparameters) |
+| Job retries | 3 (2 requeues) |
+| Configuration | Presets only — no custom hyperparameters |
+
+---
+
+## Roadmap
+
+### Done
+- ✅ Fine-tuning with LoRA/QLoRA for 1.5B–70B models
+- ✅ SmartRoute pre-flight capacity check
+- ✅ Hardware-aware worker (NVIDIA CUDA + AMD ROCm)
+- ✅ Multi-environment OGPU source (single source, two compose files)
+- ✅ Provider reliability system (auto-requeue, reputation, artifact validation, zombie detection)
+- ✅ Stripe payments + append-only credit ledger + phase-based refunds
+- ✅ Token estimation with tiktoken (streaming, every 10th row)
+- ✅ Email verification (Resend API)
+- ✅ Frontend redesign (shadcn/ui + persistent dark mode)
+- ✅ Production Docker Compose + Nginx + deploy script
+- ✅ CI/CD — GitHub Actions, 115 tests, PostgreSQL + Redis services
+- ✅ Docker images in GHCR (`cuda-latest`, `rocm-latest`)
+- ✅ Health endpoints + admin metrics (bearer-protected)
+- ✅ Security hardening (timing-safe comparisons, YAML injection prevention, SSRF fixes, CORS restrictions)
+- ✅ Job metrics CSV export for pricing & efficiency analysis
+
+### Planned
+- 🟡 **Unsloth integration** — faster training, less VRAM (NVIDIA single-GPU)
+- 🟡 **Quantize source** — GGUF, GPTQ, AWQ (NVIDIA + AMD + CPU)
+- 🟡 **Convert source** — format conversion (safetensors → GGUF, MLX, EXL2)
+- 🟡 **Wallet login** — Sign-In with Ethereum (SIWE)
+- 🟡 **OGPU payments** — direct $OGPU token payment with 10% discount
+- 🟡 **Event-driven polling** — replace Celery polling with `ogpu.events` watchers
+- 🟢 **Community Hub** — public model and dataset sharing
+- 🟢 **Dataset Lab** — synthetic generation, cleaning, annotation
+- 🟢 **Model Playground** — quick testing, A/B comparison, serverless endpoints
 
 ---
 
 ## Support
 
-- [Telegram](https://t.me/openreef)
+- [Telegram](https://t.me/openreef) — announcements + community support
+- [API docs](http://127.0.0.1:8000/docs) — interactive Swagger UI (local)
