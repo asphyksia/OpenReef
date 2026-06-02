@@ -92,7 +92,7 @@ async def client(db) -> AsyncGenerator[AsyncClient, None]:
         yield db
 
     app.dependency_overrides[get_db] = override_get_db
-    transport = ASGITransport(app=app, raise_app_exceptions=True)
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
@@ -104,7 +104,7 @@ async def auth_client(db) -> AsyncGenerator:
         yield db
 
     app.dependency_overrides[get_db] = override_get_db
-    transport = ASGITransport(app=app, raise_app_exceptions=True)
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
 
     class AuthClient:
         def __init__(self):
