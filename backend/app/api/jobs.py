@@ -17,10 +17,24 @@ from app.services.pricing import PRESET_HOURS, TIMEOUT_MULTIPLIER
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
-def _estimate_timeout_seconds(preset: str) -> int:
-    """Conservative estimate of total job duration in seconds."""
+def _estimate_timeout_seconds(preset: str, token_count: int = 0) -> int:
+    """Conservative estimate of total job duration in seconds.
+
+    Adjusts the base timeout based on dataset token count.
+    A small dataset (few tokens) gets a shorter timeout.
+    Normalized to 100k tokens as the reference point.
+    """
     est_hours = PRESET_HOURS.get(preset, 2)
-    return int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
+    base_timeout = int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
+
+    # Adjust timeout based on dataset size (min 30% of base timeout)
+    if token_count > 0:
+        token_factor = min(token_count / 100_000, 1.0)
+        timeout = int(base_timeout * (0.3 + 0.7 * token_factor))
+    else:
+        timeout = base_timeout
+
+    return timeout
 
 
 async def _check_stale_job(job: Job, db: AsyncSession) -> Job:
@@ -34,7 +48,12 @@ async def _check_stale_job(job: Job, db: AsyncSession) -> Job:
     if not job.started_at:
         return job
 
-    timeout_seconds = _estimate_timeout_seconds(job.preset)
+    # Get dataset token_count for timeout adjustment
+    from app.models.dataset import Dataset
+    dataset = await db.get(Dataset, job.dataset_id)
+    token_count = dataset.token_count if dataset else 0
+
+    timeout_seconds = _estimate_timeout_seconds(job.preset, token_count)
     now = datetime.now(timezone.utc)
     started = job.started_at
     if started.tzinfo is None:
@@ -70,7 +89,7 @@ async def _check_stale_job(job: Job, db: AsyncSession) -> Job:
     return job
 
 
-def _compute_progress(job: Job) -> tuple[int, str | None]:
+def _compute_progress(job: Job, token_count: int = 0) -> tuple[int, str | None]:
     """Calculate dynamic progress percentage and ETA for running jobs.
 
     Returns (progress_pct, estimated_completion_iso).
@@ -79,7 +98,7 @@ def _compute_progress(job: Job) -> tuple[int, str | None]:
     estimated_completion = None
 
     if job.status == "running" and job.started_at:
-        timeout_seconds = _estimate_timeout_seconds(job.preset)
+        timeout_seconds = _estimate_timeout_seconds(job.preset, token_count)
         now = datetime.now(timezone.utc)
         started = job.started_at
         if started.tzinfo is None:
@@ -97,6 +116,8 @@ def _compute_progress(job: Job) -> tuple[int, str | None]:
 
 @router.get("", response_model=list[JobResponse])
 async def list_jobs(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models.dataset import Dataset
+
     result = await db.execute(
         select(Job).where(Job.user_id == user.id).order_by(Job.created_at.desc())
     )
@@ -104,7 +125,10 @@ async def list_jobs(user: User = Depends(get_current_user), db: AsyncSession = D
     responses = []
     for j in jobs:
         j = await _check_stale_job(j, db)
-        progress_pct, estimated_completion = _compute_progress(j)
+        # Get dataset token_count for progress/timeout calculation
+        dataset = await db.get(Dataset, j.dataset_id)
+        token_count = dataset.token_count if dataset else 0
+        progress_pct, estimated_completion = _compute_progress(j, token_count)
         responses.append(_to_response(j, progress_pct=progress_pct, estimated_completion=estimated_completion))
     return responses
 
@@ -115,6 +139,8 @@ async def get_job(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.models.dataset import Dataset
+
     job = await db.get(Job, job_id)
     if job is None or job.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
@@ -122,12 +148,16 @@ async def get_job(
     # Lazy stale-job detection: fail jobs that exceeded timeout
     job = await _check_stale_job(job, db)
 
+    # Get dataset token_count for progress/timeout calculation
+    dataset = await db.get(Dataset, job.dataset_id)
+    token_count = dataset.token_count if dataset else 0
+
     download_url = None
     if job.output_r2_key:
         from app.services import storage_service
         download_url = storage_service.presigned_url(job.output_r2_key)
 
-    progress_pct, estimated_completion = _compute_progress(job)
+    progress_pct, estimated_completion = _compute_progress(job, token_count)
 
     return _to_response(job, download_url=download_url,
                         progress_pct=progress_pct,

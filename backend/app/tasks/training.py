@@ -25,12 +25,28 @@ MAX_RETRIES = 20 if _MOCK else 120 if _LOCAL else 240
 MAX_PUBLISH_RETRIES = 1  # Max retries if OGPU task publish fails
 
 
-def _calculate_timeout(preset: str, param_count_b: int) -> int:
-    """Calculate timeout in seconds based on preset and model size."""
+def _calculate_timeout(preset: str, param_count_b: int, token_count: int = 0) -> int:
+    """Calculate timeout in seconds based on preset, model size, and dataset tokens.
+
+    Adjusts the base timeout based on dataset token count.
+    A small dataset (few tokens) gets a shorter timeout.
+    Normalized to 100k tokens as the reference point.
+    """
     est_hours = PRESET_HOURS.get(preset, 2)
+    base_timeout = int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
+
+    # Scale by model size (13B+ gets 2x timeout)
     if param_count_b >= 13:
-        est_hours *= 2
-    return int(est_hours * 3600 * TIMEOUT_MULTIPLIER)
+        base_timeout *= 2
+
+    # Adjust timeout based on dataset size (min 30% of base timeout)
+    if token_count > 0:
+        token_factor = min(token_count / 100_000, 1.0)
+        timeout = int(base_timeout * (0.3 + 0.7 * token_factor))
+    else:
+        timeout = base_timeout
+
+    return timeout
 
 
 @celery_app.task(name="tasks.training.run_job", bind=True, max_retries=MAX_RETRIES)
@@ -185,9 +201,12 @@ def run_job(self, job_id: str):
                 job.started_at = datetime.now(timezone.utc)
                 job.progress_pct = max(job.progress_pct, 10)
 
-                # Calculate dynamic timeout based on preset and model size
+                # Calculate dynamic timeout based on preset, model size, and dataset tokens
                 base_model = session.get(DBBaseModel, job.base_model_id)
-                timeout_seconds = _calculate_timeout(job.preset, base_model.param_count if base_model else 0)
+                dataset = session.get(Dataset, job.dataset_id)
+                token_count = dataset.token_count if dataset else 0
+                param_count = base_model.param_count if base_model else 0
+                timeout_seconds = _calculate_timeout(job.preset, param_count, token_count)
                 job.status_detail = f"Provider running (timeout: {timeout_seconds // 3600}h estimated)"
                 if attempter_count > 0 and job.provider_address is None:
                     job.provider_address = status_info.get("attempter_address")
@@ -263,7 +282,10 @@ def run_job(self, job_id: str):
             if job.status == "running" and job.started_at:
                 elapsed = (datetime.now(timezone.utc) - job.started_at).total_seconds()
                 base_model = session.get(DBBaseModel, job.base_model_id)
-                timeout_seconds = _calculate_timeout(job.preset, base_model.param_count if base_model else 0)
+                dataset = session.get(Dataset, job.dataset_id)
+                token_count = dataset.token_count if dataset else 0
+                param_count = base_model.param_count if base_model else 0
+                timeout_seconds = _calculate_timeout(job.preset, param_count, token_count)
 
                 if elapsed > timeout_seconds:
                     job.status = "failed"

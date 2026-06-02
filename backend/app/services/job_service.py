@@ -14,7 +14,7 @@ HOURLY_RATE_13B = 1.00  # USD/hr estimate for 13B on OGPU
 BUFFER = 1.05            # 5% buffer
 
 
-async def estimate_cost(db: AsyncSession, base_model_id: uuid.UUID, preset: str) -> float:
+async def estimate_cost(db: AsyncSession, base_model_id: uuid.UUID, preset: str, token_count: int = 0) -> float:
     model = await db.get(DBBaseModel, base_model_id)
     if model is None or not model.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid base model")
@@ -24,6 +24,12 @@ async def estimate_cost(db: AsyncSession, base_model_id: uuid.UUID, preset: str)
 
     est_hours = pricing.PRESET_HOURS[preset]
     hourly_rate = HOURLY_RATE_13B if model.param_count >= 13 else HOURLY_RATE_7B
+
+    # Adjust cost based on dataset size (min 30% of base cost)
+    if token_count > 0:
+        token_factor = min(token_count / 100_000, 1.0)
+        est_hours = est_hours * (0.3 + 0.7 * token_factor)
+
     return round(hourly_rate * est_hours * BUFFER, 2)
 
 
@@ -48,7 +54,13 @@ async def create_job(
     if model is None or not model.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid base model")
 
-    estimated_cost = await estimate_cost(db, base_model_id, preset)
+    # Verify dataset belongs to user and get token_count for cost estimation
+    dataset = await db.get(Dataset, dataset_id)
+    if dataset is None or dataset.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    token_count = dataset.token_count or 0
+    estimated_cost = await estimate_cost(db, base_model_id, preset, token_count)
 
     balance = await credit_service.get_balance(db, user_id)
     if balance < estimated_cost:
@@ -56,11 +68,6 @@ async def create_job(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=f"Insufficient balance. Need ${estimated_cost}, have ${balance}",
         )
-
-    # Verify dataset belongs to user
-    dataset = await db.get(Dataset, dataset_id)
-    if dataset is None or dataset.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
     job = Job(
         user_id=user_id,
