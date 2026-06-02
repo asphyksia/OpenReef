@@ -1,15 +1,19 @@
 """Enhanced health endpoint with infrastructure checks and metrics."""
+import csv
 import hmac
+import io
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
 
 from app.config import settings
 from app.database import engine, get_sync_engine
+from app.models.base_model import BaseModel as DBBaseModel
+from app.models.dataset import Dataset
 from app.models.job import Job
 from app.models.user import User
 from app.models.provider import Provider
@@ -150,3 +154,51 @@ async def admin_metrics(_: None = Depends(_verify_admin_key)):
     """
     metrics = _get_metrics()
     return {"status": "ok", "metrics": metrics}
+
+
+@router.get("/admin/job-metrics")
+async def admin_job_metrics_csv(_: None = Depends(_verify_admin_key)):
+    """Export completed job metrics as CSV for pricing and efficiency analysis.
+
+    Requires Authorization: Bearer <ADMIN_API_KEY> header.
+    Returns anonymized data: no user IDs, no provider addresses, no content.
+    """
+    sync_engine = get_sync_engine()
+    with sync_engine.connect() as conn:
+        rows = conn.execute(
+            select(
+                DBBaseModel.name.label("model_name"),
+                DBBaseModel.param_count,
+                Job.preset,
+                Job.adapter,
+                Dataset.size_bytes.label("dataset_size_bytes"),
+                Dataset.format.label("dataset_format"),
+                Dataset.token_count,
+                Job.training_duration_seconds,
+                Job.gpu_type,
+                Job.estimated_cost,
+                Job.status,
+                Job.requeue_count,
+            )
+            .select_from(Job)
+            .outerjoin(DBBaseModel, Job.base_model_id == DBBaseModel.id)
+            .outerjoin(Dataset, Job.dataset_id == Dataset.id)
+            .order_by(Job.created_at)
+        ).fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "model_name", "param_count", "preset", "adapter",
+        "dataset_size_bytes", "dataset_format", "token_count",
+        "training_duration_seconds", "gpu_type", "estimated_cost",
+        "status", "requeue_count",
+    ])
+    for row in rows:
+        writer.writerow(list(row))
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=job_metrics.csv"},
+    )

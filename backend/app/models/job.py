@@ -41,6 +41,11 @@ class Job(Base):
     requeue_count: Mapped[int] = mapped_column(Integer, default=0)
     provider_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_heartbeat: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    # Job metrics — populated on completion for analytics
+    training_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gpu_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # nvidia_cuda, amd_rocm, cpu
+
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)

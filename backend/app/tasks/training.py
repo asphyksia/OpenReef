@@ -269,6 +269,14 @@ def run_job(self, job_id: str):
                     job.progress_pct = 100
                     job.completed_at = datetime.now(timezone.utc)
 
+                    # Populate job metrics for analytics export
+                    if job.started_at:
+                        job.training_duration_seconds = int(
+                            (job.completed_at - job.started_at).total_seconds()
+                        )
+                    # GPU type from task result or provider metadata
+                    job.gpu_type = result.get("gpu_type", "unknown")
+
                     # Track provider who completed the job — prefer winning_provider from SDK
                     winner = status_info.get("winning_provider") or job.provider_address
                     if winner:
