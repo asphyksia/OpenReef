@@ -1,5 +1,7 @@
 # OpenReef
 
+[![Build with Ona](https://ona.com/build-with-ona.svg)](https://app.ona.com/#https://github.com/Asphyksia/OpenReef)
+
 **Simple, affordable AI fine-tuning on decentralized GPU infrastructure.**
 
 OpenReef is a web platform built on the [OpenGPU Network](https://opengpu.network) that turns the complex process of fine-tuning AI models into a simple web experience: upload a dataset, pick a model, launch a job, and download the trained adapter. No terminal, no YAML, no headaches.
