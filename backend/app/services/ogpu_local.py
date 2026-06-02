@@ -187,7 +187,13 @@ class LocalOGPUAdapter(OGPUAdapter):
                     output_path = Path(output_dir)
                     has_artifact = bool(list(output_path.glob("**/*.safetensors")) or list(output_path.glob("**/pytorch_model.bin")))
 
-                current_status = "finalized" if has_artifact else "responded"
+                if has_artifact:
+                    current_status = "finalized"
+                else:
+                    # Process died without producing an artifact (e.g. OOM, crash)
+                    current_status = "failed"
+                    if not state.get("error"):
+                        r.hset(key, "error", "Training process exited without producing an adapter file (possible OOM or crash)")
                 r.hset(key, "status", current_status)
 
         expiry_time = int(created_at) + 86400  # 24h expiry

@@ -187,6 +187,7 @@ def run_job(self, job_id: str):
                 "attempted": "running",
                 "responded": "running",  # Provider responded but artifact not ready yet
                 "finalized": "completed",
+                "failed": "failed",  # Provider process died without artifact
                 "expired": "failed",
                 "canceled": "cancelled",
                 "checkpointing": "checkpointing",  # Provider saving checkpoint, still running
@@ -210,6 +211,20 @@ def run_job(self, job_id: str):
                 job.status_detail = f"Provider running (timeout: {timeout_seconds // 3600}h estimated)"
                 if attempter_count > 0 and job.provider_address is None:
                     job.provider_address = status_info.get("attempter_address")
+
+            elif chain_status == "failed" and job.status not in ("completed", "failed"):
+                # Provider process died without producing an artifact (e.g. OOM, crash)
+                job.status = "failed"
+                job.error_message = status_info.get("error", "Training process exited unexpectedly without producing an adapter")
+                job.completed_at = datetime.now(timezone.utc)
+                winner = status_info.get("winning_provider") or job.provider_address
+                if winner:
+                    provider_service.record_provider_failure(session, winner)
+                    provider_service.evaluate_provider_penalty(session, winner)
+                if job.estimated_cost and float(job.estimated_cost) > 0:
+                    credit_service.refund_credits_sync(session, job.user_id, float(job.estimated_cost), job.id, description="Training process crashed — full refund")
+                session.commit()
+                return
 
             elif new_status == "completed" and job.status not in ("completed", "cancelled"):
                 result = ogpu_service.get_task_result(job.ogpu_task_address)
