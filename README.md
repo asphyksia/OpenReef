@@ -56,7 +56,7 @@ Automatic failover: if a provider drops, the job requeues (max 3 attempts). If a
 | 13B | Balanced | ~2h | $2.10 |
 | 13B | Quality | ~4h | $4.20 |
 
-40–70% cheaper than centralized alternatives. Provider gets 70%, platform keeps 25%, 5% goes to a refund buffer.
+Prices are estimates and may vary based on actual provider availability and training duration.
 
 ---
 
