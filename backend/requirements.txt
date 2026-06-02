@@ -42,3 +42,6 @@ slowapi>=0.1.9
 # HTTP client
 httpx>=0.28.1
 requests>=2.32.0
+
+# YAML config serialization
+pyyaml>=6.0

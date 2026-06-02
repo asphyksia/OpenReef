@@ -10,13 +10,18 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import requests
+import yaml
 
 logger = logging.getLogger(__name__)
 
 # Local storage directory for training data
 _TRAINING_BASE = Path("/tmp/openreef_training")
+
+ALLOWED_ADAPTERS = {"lora", "qlora"}
+ALLOWED_DEVICE_TYPES = {"amd_rocm", "nvidia_cuda", "cpu"}
 
 
 def download_dataset(url: str, output_path: Path) -> Path:
@@ -53,7 +58,19 @@ def build_axolotl_yaml_config(
     output_dir: str,
     optimizer: str = "adamw_torch",
 ) -> str:
-    """Build an Axolotl YAML config adapted to the hardware."""
+    """Build an Axolotl YAML config adapted to the hardware.
+
+    Uses yaml.safe_dump() to prevent YAML injection attacks — all values
+    are properly serialized as strings/booleans/numbers, never interpolated
+    into raw YAML text.
+    """
+    if adapter_type not in ALLOWED_ADAPTERS:
+        raise ValueError(f"Unsupported adapter type: {adapter_type!r}")
+    if device_type not in ALLOWED_DEVICE_TYPES:
+        raise ValueError(f"Unsupported device type: {device_type!r}")
+    if "\n" in base_model or "\r" in base_model:
+        raise ValueError("base_model must not contain newlines")
+
     # Hardware-specific overrides
     if device_type == "amd_rocm":
         bf16 = False
@@ -74,77 +91,68 @@ def build_axolotl_yaml_config(
         flash_attention = False
         sdp_attention = True
 
-    batch_size = preset_params.get("batch_size", 1)
+    batch_size = int(preset_params.get("batch_size", 1))
+    param_count = int(preset_params.get("param_count", 0))
 
     # Reduce batch size for large models on AMD ROCm to avoid OOM
     if device_type == "amd_rocm":
-        param_count = preset_params.get("param_count", 0)
         if param_count >= 8:
             batch_size = min(batch_size, 1)
         elif param_count >= 7:
             batch_size = min(batch_size, 2)
 
-    gradient_accumulation = max(1, 4 // batch_size)
+    gradient_accumulation = max(1, 4 // max(batch_size, 1))
 
-    # Gradient checkpointing: only enable for models >= 7B that need it to fit in VRAM
-    # On AMD ROCm, use_reentrant=true to avoid meta device gradient errors with LoRA
-    param_count = preset_params.get("param_count", 0)
+    # Gradient checkpointing: only enable for models >= 7B
     needs_gc = param_count >= 7
 
+    config: dict[str, Any] = {
+        "base_model": base_model,
+        "model_type": "AutoModelForCausalLM",
+        "tokenizer_type": "AutoTokenizer",
+        "datasets": [
+            {
+                "path": dataset_path,
+                "type": "completion",
+                "field": "text",
+            }
+        ],
+        "bf16": bf16,
+        "fp16": fp16,
+        "tf32": tf32,
+        "flash_attention": flash_attention,
+        "sdp_attention": sdp_attention,
+        "adapter": adapter_type,
+        "lora_r": 16,
+        "lora_alpha": 32,
+        "lora_dropout": 0.05,
+        "lora_target_linear": True,
+        "num_epochs": int(preset_params.get("num_epochs", 2)),
+        "learning_rate": float(preset_params.get("learning_rate", 2e-4)),
+        "micro_batch_size": batch_size,
+        "gradient_accumulation_steps": gradient_accumulation,
+        "max_seq_length": 512,
+        "warmup_ratio": 0.1,
+        "output_dir": output_dir,
+        "save_strategy": "epoch",
+        "save_total_limit": 1,
+        "logging_steps": 1,
+        "optimizer": optimizer,
+        "lr_scheduler": "cosine",
+    }
+
     if needs_gc:
-        gc = "true"
-        # use_reentrant=true avoids "expected device meta but got cuda:0" errors on ROCm
-        # This is safe for LoRA without unfrozen_parameters
-        gc_kwargs = """
-gradient_checkpointing_kwargs:
-  use_reentrant: true
-"""
+        config["gradient_checkpointing"] = True
+        config["gradient_checkpointing_kwargs"] = {"use_reentrant": True}
     else:
-        gc = "false"
-        gc_kwargs = ""
+        config["gradient_checkpointing"] = False
 
-    yaml_config = f"""base_model: {base_model}
-model_type: AutoModelForCausalLM
-tokenizer_type: AutoTokenizer
-
-datasets:
-  - path: {dataset_path}
-    type: completion
-    field: text
-
-# Hardware-specific
-bf16: {str(bf16).lower()}
-fp16: {str(fp16).lower()}
-tf32: {str(tf32).lower()}
-flash_attention: {str(flash_attention).lower()}
-sdp_attention: {str(sdp_attention).lower()}
-
-# LoRA
-adapter: {adapter_type}
-lora_r: 16
-lora_alpha: 32
-lora_dropout: 0.05
-lora_target_linear: true
-
-# Training
-num_epochs: {preset_params.get("num_epochs", 2)}
-learning_rate: {preset_params.get("learning_rate", 2e-4)}
-micro_batch_size: {batch_size}
-gradient_accumulation_steps: {gradient_accumulation}
-max_seq_length: 512
-warmup_ratio: 0.1
-gradient_checkpointing: {gc}{gc_kwargs}
-# Output
-output_dir: {output_dir}
-save_strategy: "epoch"
-save_total_limit: 1
-logging_steps: 1
-
-# Optimizer
-optimizer: {optimizer}
-lr_scheduler: cosine
-"""
-    return yaml_config
+    return yaml.safe_dump(
+        config,
+        sort_keys=False,
+        default_flow_style=False,
+        allow_unicode=True,
+    )
 
 
 def launch_training_subprocess(
