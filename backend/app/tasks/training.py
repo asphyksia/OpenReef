@@ -97,7 +97,7 @@ def run_job(self, job_id: str):
                     dataset_url=dataset_url,
                     preset=job.preset,
                     adapter=job.adapter,
-                    output_bucket=f"models/{job.user_id}/{job.id}",
+                    output_prefix=f"models/{job.user_id}/{job.id}",
                     param_count=base_model.param_count,
                 )
                 config = ogpu_service.build_task_config(axolotl)

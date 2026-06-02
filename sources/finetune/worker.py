@@ -26,7 +26,7 @@ class FineTuneInput(BaseModel):
     num_epochs: int = 2
     learning_rate: float = 1e-4
     batch_size: int = 4
-    output_bucket: str = ""
+    output_prefix: str = ""
 
 
 class FineTuneOutput(BaseModel):

@@ -26,7 +26,7 @@ class AxolotlConfig:
     dataset_url: str
     preset: str          # fast, balanced, quality
     adapter: str         # lora, qlora
-    output_bucket: str
+    output_prefix: str   # R2 key prefix, e.g. models/{user_id}/{job_id}
     param_count: int = 0  # model size in billions, for batch size adjustment
 
 
@@ -49,7 +49,7 @@ def build_task_config(axolotl: AxolotlConfig) -> dict:
             "learning_rate": params["learning_rate"],
             "batch_size": params["batch_size"],
             "param_count": axolotl.param_count,
-            "output_bucket": axolotl.output_bucket,
+            "output_prefix": axolotl.output_prefix,
         },
     }
 
