@@ -27,6 +27,7 @@ class AxolotlConfig:
     preset: str          # fast, balanced, quality
     adapter: str         # lora, qlora
     output_prefix: str   # R2 key prefix, e.g. models/{user_id}/{job_id}
+    upload_url: str = ""  # presigned PUT URL for artifact upload
     param_count: int = 0  # model size in billions, for batch size adjustment
 
 
@@ -38,19 +39,22 @@ def get_preset_params(preset: str) -> dict:
 def build_task_config(axolotl: AxolotlConfig) -> dict:
     """Build the config dict for an OGPU task."""
     params = get_preset_params(axolotl.preset)
+    data = {
+        "base_model": axolotl.base_model,
+        "dataset_url": axolotl.dataset_url,
+        "preset": axolotl.preset,
+        "adapter": axolotl.adapter,
+        "num_epochs": params["num_epochs"],
+        "learning_rate": params["learning_rate"],
+        "batch_size": params["batch_size"],
+        "param_count": axolotl.param_count,
+        "output_prefix": axolotl.output_prefix,
+    }
+    if axolotl.upload_url:
+        data["upload_url"] = axolotl.upload_url
     return {
         "function_name": "finetune",
-        "data": {
-            "base_model": axolotl.base_model,
-            "dataset_url": axolotl.dataset_url,
-            "preset": axolotl.preset,
-            "adapter": axolotl.adapter,
-            "num_epochs": params["num_epochs"],
-            "learning_rate": params["learning_rate"],
-            "batch_size": params["batch_size"],
-            "param_count": axolotl.param_count,
-            "output_prefix": axolotl.output_prefix,
-        },
+        "data": data,
     }
 
 

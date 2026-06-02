@@ -25,10 +25,6 @@ services:
       - /data:/workspace
     environment:
       - HF_TOKEN=${HF_TOKEN:-}
-      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
-      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
-      - R2_ENDPOINT_URL=${R2_ENDPOINT_URL:-}
-      - R2_BUCKET_NAME=${R2_BUCKET_NAME:?R2_BUCKET_NAME is required}
       - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-}
       - TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
     command: ["--config", "/workspace/config.json"]

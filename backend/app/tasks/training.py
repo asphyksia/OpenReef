@@ -92,12 +92,24 @@ def run_job(self, job_id: str):
                     raise ValueError(f"Dataset {job.dataset_id} not found")
                 dataset_url = ogpu_service.resolve_dataset_url(dataset.r2_key)
 
+                # Generate presigned PUT URL for artifact upload (real mode only)
+                upload_url = ""
+                if not (_MOCK or _LOCAL):
+                    from app.services import storage_service
+                    output_key = f"models/{job.user_id}/{job.id}/adapter/adapter_model.safetensors"
+                    upload_url = storage_service.presigned_put_url(
+                        output_key,
+                        expires_in=3600,  # 1 hour — enough for any training job
+                        content_type="application/octet-stream",
+                    )
+
                 axolotl = ogpu_service.AxolotlConfig(
                     base_model=base_model.name,
                     dataset_url=dataset_url,
                     preset=job.preset,
                     adapter=job.adapter,
                     output_prefix=f"models/{job.user_id}/{job.id}",
+                    upload_url=upload_url,
                     param_count=base_model.param_count,
                 )
                 config = ogpu_service.build_task_config(axolotl)

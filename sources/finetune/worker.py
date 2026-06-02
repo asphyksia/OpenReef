@@ -2,7 +2,7 @@
 
 Receives a fine-tuning task from OGPU, detects the available hardware
 (NVIDIA CUDA or AMD ROCm), runs Axolotl training with hardware-specific
-configuration, uploads the result to R2, and returns the output key.
+configuration, and returns the trained adapter via presigned PUT URL or base64.
 
 Hardware detection is automatic — the same worker.py works on both
 NVIDIA and AMD providers without modification.
@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 import ogpu.service
+import requests
 from pydantic import BaseModel
 
 
@@ -27,6 +28,7 @@ class FineTuneInput(BaseModel):
     learning_rate: float = 1e-4
     batch_size: int = 4
     output_prefix: str = ""
+    upload_url: str = ""  # presigned PUT URL for artifact upload
 
 
 class FineTuneOutput(BaseModel):
@@ -219,10 +221,10 @@ def _find_adapter_file(output_dir: Path) -> Path | None:
     return None
 
 
-def _encode_adapter_base64(adapter_path: Path, max_size_bytes: int = 50 * 1024 * 1024) -> str | None:
+def _encode_adapter_base64(adapter_path: Path, max_size_bytes: int = 100 * 1024 * 1024) -> str | None:
     """Read adapter file and encode as base64.
 
-    Returns None if the file is too large (>50MB) to encode safely.
+    Returns None if the file is too large (>100MB) to encode safely.
     """
     file_size = adapter_path.stat().st_size
     if file_size > max_size_bytes:
@@ -236,20 +238,16 @@ def _encode_adapter_base64(adapter_path: Path, max_size_bytes: int = 50 * 1024 *
         return base64.b64encode(f.read()).decode("ascii")
 
 
-def _upload_adapter_to_r2(adapter_path: Path, output_prefix: str, max_size_bytes: int = 500 * 1024 * 1024) -> str:
-    """Upload a single adapter file to R2.
+def _upload_via_presigned_url(adapter_path: Path, upload_url: str, max_size_bytes: int = 500 * 1024 * 1024) -> None:
+    """Upload the adapter file to R2 using a presigned PUT URL.
+
+    No R2 credentials needed — the URL is pre-authorized by the backend.
 
     Args:
         adapter_path: Path to the adapter safetensors file.
-        output_prefix: R2 key prefix (e.g. models/{user_id}/{job_id}).
+        upload_url: Presigned PUT URL from the backend.
         max_size_bytes: Maximum file size (default 500 MB).
-
-    Returns:
-        The exact R2 key of the uploaded file.
     """
-    import boto3
-    from botocore.config import Config
-
     file_size = adapter_path.stat().st_size
     if file_size > max_size_bytes:
         raise ValueError(
@@ -257,19 +255,13 @@ def _upload_adapter_to_r2(adapter_path: Path, output_prefix: str, max_size_bytes
             f"(limit: {max_size_bytes / 1024 / 1024:.0f} MB)"
         )
 
-    bucket = os.environ.get("R2_BUCKET_NAME", "openreef-models")
-    client = boto3.client(
-        "s3",
-        endpoint_url=os.environ.get("R2_ENDPOINT_URL", ""),
-        aws_access_key_id=os.environ.get("R2_ACCESS_KEY_ID", ""),
-        aws_secret_access_key=os.environ.get("R2_SECRET_ACCESS_KEY", ""),
-        config=Config(signature_version="s3v4"),
-    )
+    with open(adapter_path, "rb") as f:
+        resp = requests.put(upload_url, data=f, timeout=300)
+        resp.raise_for_status()
 
-    # Always standardize the R2 key name regardless of the actual filename
-    r2_key = f"{output_prefix}/adapter/adapter_model.safetensors"
-    client.upload_file(str(adapter_path), bucket, r2_key)
-    return r2_key
+    ogpu.service.logger.info(
+        "Uploaded adapter to R2 via presigned URL: %d bytes", file_size
+    )
 
 
 @ogpu.service.expose(timeout=7200)
@@ -325,18 +317,21 @@ def finetune(data: FineTuneInput) -> FineTuneOutput:
 
         ogpu.service.logger.info("Found adapter: %s (%.1f MB)", adapter_path, adapter_path.stat().st_size / 1024 / 1024)
 
-        # Try to encode as base64 first (for small adapters <50MB)
+        # Try to encode as base64 first (for small adapters <100MB)
         adapter_b64 = _encode_adapter_base64(adapter_path)
         if adapter_b64:
             ogpu.service.logger.info("Returning adapter as base64 (%.1f MB encoded)", len(adapter_b64) / 1024 / 1024)
             return FineTuneOutput(status="completed", adapter_base64=adapter_b64)
 
-        # Fallback: upload to R2 for larger adapters
-        ogpu.service.logger.info("Adapter too large for base64, uploading to R2...")
-        task_id = getattr(ogpu.service, "task_id", "unknown-task")
-        output_key = _upload_adapter_to_r2(adapter_path, task_id)
-        ogpu.service.logger.info("Training complete. Output key: %s", output_key)
-        return FineTuneOutput(status="completed", output_key=output_key)
+        # Fallback: upload via presigned PUT URL for larger adapters
+        if not data.upload_url:
+            ogpu.service.logger.error("No upload_url provided for large adapter upload")
+            return FineTuneOutput(status="failed", error="No upload URL provided for artifact upload")
+
+        ogpu.service.logger.info("Adapter too large for base64, uploading via presigned URL...")
+        _upload_via_presigned_url(adapter_path, data.upload_url)
+        ogpu.service.logger.info("Training complete. Artifact uploaded to R2 via presigned URL.")
+        return FineTuneOutput(status="completed")
 
     except subprocess.TimeoutExpired:
         return FineTuneOutput(status="failed", error="Training exceeded timeout (2 hours)")

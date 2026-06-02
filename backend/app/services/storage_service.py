@@ -115,6 +115,24 @@ def presigned_url(key: str, expires_in: int = 3600) -> str:
     )
 
 
+def presigned_put_url(key: str, expires_in: int = 3600, content_type: str = "application/octet-stream") -> str:
+    """Generate a presigned upload URL for a single PUT operation.
+
+    The URL is valid for `expires_in` seconds and only allows uploading
+    to the specified key. No credentials needed on the client side.
+    """
+    client = _get_client()
+    return client.generate_presigned_url(
+        "put_object",
+        Params={
+            "Bucket": _bucket,
+            "Key": key,
+            "ContentType": content_type,
+        },
+        ExpiresIn=expires_in,
+    )
+
+
 def head_object(key: str) -> dict | None:
     """Check if an object exists and return its metadata, or None if not found."""
     client = _get_client()
