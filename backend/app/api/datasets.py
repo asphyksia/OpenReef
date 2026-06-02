@@ -2,12 +2,13 @@ import os
 import re
 import uuid
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.limiter import limiter
 from app.models.dataset import Dataset
 from app.models.user import User
 from app.schemas.dataset import DatasetResponse
@@ -26,7 +27,9 @@ async def list_datasets(user: User = Depends(get_current_user), db: AsyncSession
 
 
 @router.post("", response_model=DatasetResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 async def upload_dataset(
+    request: Request,
     file: UploadFile,
     name: str | None = Form(None),
     user: User = Depends(get_current_user),

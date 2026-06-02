@@ -1,13 +1,14 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.limiter import limiter
 from app.models.job import Job
 from app.models.user import User
 from app.schemas.job import JobCreateRequest, JobResponse
@@ -188,7 +189,9 @@ async def download_job(
 
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def create_job(
+    request: Request,
     body: JobCreateRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
