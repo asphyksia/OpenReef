@@ -45,3 +45,6 @@ requests>=2.32.0
 
 # YAML config serialization
 pyyaml>=6.0
+
+# Token estimation
+tiktoken>=0.7.0
