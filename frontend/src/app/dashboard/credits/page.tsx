@@ -165,7 +165,7 @@ export default function CreditsPage() {
 
       <div className="text-xs text-muted-foreground">
         Need help?{" "}
-        <a href="https://t.me/openreef" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+        <a href="https://t.me/OpenReef" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
           Contact us on Telegram
         </a>
       </div>

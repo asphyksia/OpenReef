@@ -135,7 +135,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <footer className="border-t px-6 py-3 text-xs text-muted-foreground flex justify-between bg-card">
         <span>OpenReef MVP</span>
         <a
-          href="https://t.me/openreef"
+          href="https://t.me/OpenReef"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1 hover:text-foreground transition-colors"

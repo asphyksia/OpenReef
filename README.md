@@ -340,5 +340,5 @@ OpenReef/
 
 ## Support
 
-- [Telegram](https://t.me/openreef) — announcements + community support
+- [Telegram](https://t.me/OpenReef) — announcements + community support
 - [API docs](http://127.0.0.1:8000/docs) — interactive Swagger UI (local)
