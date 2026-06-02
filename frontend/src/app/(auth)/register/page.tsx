@@ -26,7 +26,8 @@ export default function RegisterPage() {
     try {
       const data = await register(email, password);
       if (data.verification_required) {
-        router.push(`/verify-email-pending?email=${encodeURIComponent(email)}`);
+        sessionStorage.setItem("pending_verification_email", email);
+        router.push("/verify-email-pending");
       } else {
         router.push("/dashboard");
       }

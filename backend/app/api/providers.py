@@ -5,6 +5,7 @@ In real OGPU mode, provider authentication is handled on-chain via OGPU wallets.
 The shared secret (PROVIDER_API_SECRET) used here is a mock-mode artifact only.
 """
 
+import hmac
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -22,7 +23,9 @@ router = APIRouter(prefix="/api/providers", tags=["providers"])
 
 def _validate_provider_secret(x_provider_secret: str | None = Header(None)):
     """Validate provider API secret from header. Must be present AND match."""
-    if x_provider_secret is None or x_provider_secret != settings.provider_api_secret:
+    if x_provider_secret is None or not hmac.compare_digest(
+        x_provider_secret, settings.provider_api_secret
+    ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid provider secret")
 
 

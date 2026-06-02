@@ -34,13 +34,27 @@ def check_stale_jobs():
     with Session(engine) as session:
         # Find jobs in non-terminal states without recent heartbeat
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)
-        stale_jobs = session.execute(
+
+        # Stale jobs: heartbeat exists but is too old
+        stale_with_heartbeat = session.execute(
             select(Job).where(
                 Job.status.in_(["running", "queued", "provisioning", "checkpointing"]),
                 Job.last_heartbeat != None,
                 Job.last_heartbeat < cutoff,
             )
         ).scalars().all()
+
+        # Zombie jobs: never received a heartbeat but started long ago
+        zombie_jobs = session.execute(
+            select(Job).where(
+                Job.status.in_(["running", "provisioning"]),
+                Job.last_heartbeat == None,
+                Job.started_at != None,
+                Job.started_at < cutoff,
+            )
+        ).scalars().all()
+
+        stale_jobs = list(stale_with_heartbeat) + list(zombie_jobs)
 
         for job in stale_jobs:
             logger.warning("Stale job detected: %s (last heartbeat: %s, status: %s)",

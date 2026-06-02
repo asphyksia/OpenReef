@@ -115,7 +115,7 @@ def run_job(self, job_id: str):
                     output_key = f"models/{job.user_id}/{job.id}/adapter/adapter_model.safetensors"
                     upload_url = storage_service.presigned_put_url(
                         output_key,
-                        expires_in=3600,  # 1 hour — enough for any training job
+                        expires_in=86400,  # 24 hours — covers longest training jobs
                         content_type="application/octet-stream",
                     )
 

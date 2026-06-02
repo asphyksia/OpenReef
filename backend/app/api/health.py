@@ -1,4 +1,5 @@
 """Enhanced health endpoint with infrastructure checks and metrics."""
+import hmac
 import logging
 from datetime import datetime, timezone
 
@@ -21,7 +22,9 @@ router = APIRouter(tags=["health"])
 def _verify_admin_key(request: Request) -> None:
     """Verify admin API key from Authorization: Bearer <key> header."""
     auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer ") or not settings.admin_api_key or auth[7:] != settings.admin_api_key:
+    if not auth.startswith("Bearer ") or not settings.admin_api_key or not hmac.compare_digest(
+        auth[7:], settings.admin_api_key
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key")
 
 

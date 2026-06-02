@@ -10,7 +10,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.job import Job
 from app.models.user import User
-from app.schemas.job import JobCreateRequest, JobEstimateResponse, JobResponse
+from app.schemas.job import JobCreateRequest, JobResponse
 from app.services import job_service
 from app.services.pricing import PRESET_HOURS, TIMEOUT_MULTIPLIER
 

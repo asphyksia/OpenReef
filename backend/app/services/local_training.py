@@ -10,7 +10,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 import requests
 
@@ -245,20 +244,8 @@ def launch_training_subprocess(
 
     log_fh.write(f"Subprocess PID: {proc.pid}\n")
     log_fh.flush()
+    log_fh.close()
 
     return proc.pid
 
 
-def _create_placeholder_dataset(path: Path):
-    """Create a small placeholder dataset for testing."""
-    examples = [
-        {"text": "### Instruction: Translate to English: Hola mundo\n### Response: Hello world"},
-        {"text": "### Instruction: What is the capital of France?\n### Response: Paris"},
-        {"text": "### Instruction: Translate to Spanish: Good morning\n### Response: Buenos días"},
-        {"text": "### Instruction: What is 2+2?\n### Response: 4"},
-        {"text": "### Instruction: Translate to English: Buenos días\n### Response: Good morning"},
-    ]
-    with open(path, "w") as f:
-        for example in examples:
-            f.write(json.dumps(example) + "\n")
-    logger.info("Created placeholder dataset at %s (%d examples)", path, len(examples))

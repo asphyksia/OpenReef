@@ -34,18 +34,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
 
   useEffect(() => {
+    // Restore dark mode preference from localStorage
+    const stored = localStorage.getItem("darkMode");
+    if (stored !== null) {
+      const isDark = stored === "true";
+      document.documentElement.classList.toggle("dark", isDark);
+      setDarkMode(isDark);
+    }
+  }, []);
+
+  useEffect(() => {
     const fetchUser = () => getMe().then(setUser).catch(() => router.push("/login"));
     fetchUser();
     // Refresh user data (balance) every 30 seconds
     const interval = setInterval(fetchUser, 30000);
-    const isDark = document.documentElement.classList.contains("dark");
-    setDarkMode(isDark);
     return () => clearInterval(interval);
   }, [router]);
 
   function toggleDarkMode() {
-    document.documentElement.classList.toggle("dark");
-    setDarkMode(!darkMode);
+    const next = !darkMode;
+    document.documentElement.classList.toggle("dark", next);
+    setDarkMode(next);
+    localStorage.setItem("darkMode", String(next));
   }
 
   if (!user) {

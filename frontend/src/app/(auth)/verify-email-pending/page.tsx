@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { resendVerification } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -11,12 +10,16 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, Mail, AlertCircle, CheckCircle2 } from "lucide-react";
 
 function VerifyEmailPendingContent() {
-  const searchParams = useSearchParams();
-  const email = searchParams.get("email") || "your email";
+  const [email, setEmail] = useState("your email");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(0);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem("pending_verification_email");
+    if (stored) setEmail(stored);
+  }, []);
 
   useEffect(() => {
     if (countdown > 0) {

@@ -133,7 +133,7 @@ export async function uploadDataset(file: File, name: string) {
     throw new Error(body.detail || `Upload failed: ${res.status}`);
   }
 
-  return res.json();
+  return await res.json() as Promise<Dataset>;
 }
 
 // ── Models ──────────────────────────────────────────────────────────────

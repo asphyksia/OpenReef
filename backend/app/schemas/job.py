@@ -31,8 +31,3 @@ class JobResponse(BaseModel):
     completed_at: str | None
 
     model_config = {"from_attributes": True}
-
-
-class JobEstimateResponse(BaseModel):
-    estimated_cost: float
-    currency: str = "USD"

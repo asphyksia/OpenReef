@@ -14,7 +14,6 @@ Switch between mock and real via OGPU_ADAPTER env var:
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
 
 from app.services.pricing import PRESET_PARAMS
 

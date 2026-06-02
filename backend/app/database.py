@@ -23,9 +23,18 @@ def get_sync_engine():
 
     Lazily initialized and cached as a module-level singleton.
     Converts the asyncpg URL to psycopg2 for sync operations.
+    Uses pool_pre_ping for resilience against dropped connections.
     """
     global _sync_engine
     if _sync_engine is None:
         url = settings.database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
-        _sync_engine = create_engine(url)
+        _sync_engine = create_engine(url, pool_pre_ping=True)
     return _sync_engine
+
+
+def dispose_sync_engine():
+    """Dispose the sync engine connection pool. Call on shutdown."""
+    global _sync_engine
+    if _sync_engine is not None:
+        _sync_engine.dispose()
+        _sync_engine = None

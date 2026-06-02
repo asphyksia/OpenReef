@@ -1,6 +1,7 @@
 import logging
 import uuid
 
+import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,8 @@ from app.schemas.payment import BalanceResponse, CheckoutSessionRequest, DevAddC
 from app.services import credit_service
 
 logger = logging.getLogger(__name__)
+
+stripe.api_key = settings.stripe_secret_key
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
@@ -35,9 +38,6 @@ async def create_checkout_session(
     """Create a Stripe Checkout Session to add credits."""
     if settings.ogpu_adapter != "real":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Stripe not configured (dev mode)")
-
-    import stripe
-    stripe.api_key = settings.stripe_secret_key
 
     session = stripe.checkout.Session.create(
         payment_method_types=["card"],
@@ -79,9 +79,6 @@ async def dev_add_credits(
 @router.post("/webhook")
 @limiter.limit("60/minute")
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    import stripe
-    stripe.api_key = settings.stripe_secret_key
-
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
 
@@ -110,7 +107,5 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             await db.commit()
             return {"received": True}
 
-    # Mark non-payment events as processed too
-    db.add(ProcessedEvent(event_id=event["id"]))
-    await db.commit()
-    return {"received": True}
+    logger.warning("Unhandled Stripe event type: %s", event["type"])
+    return {"received": True, "handled": False}

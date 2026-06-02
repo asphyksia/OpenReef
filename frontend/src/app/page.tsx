@@ -47,7 +47,7 @@ export default function HomePage() {
       <footer className="border-t px-6 py-4 text-sm text-muted-foreground">
         <div className="flex justify-between max-w-6xl mx-auto w-full">
           <span>OpenReef MVP</span>
-          <a href="https://t.me/openreef" target="_blank" className="hover:text-foreground">
+          <a href="https://t.me/openreef" target="_blank" rel="noopener noreferrer" className="hover:text-foreground">
             Support
           </a>
         </div>
