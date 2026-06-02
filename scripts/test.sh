@@ -15,7 +15,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BACKEND_DIR="$PROJECT_DIR/backend"
-VENV_PYTHON="$BACKEND_DIR/.venv/bin/python"
+
+# Detect Python — prefer .venv if available, fallback to system python
+if [ -x "$BACKEND_DIR/.venv/bin/python" ]; then
+    PYTHON="$BACKEND_DIR/.venv/bin/python"
+    ALEMBIC="$BACKEND_DIR/.venv/bin/alembic"
+else
+    PYTHON="${PYTHON:-python3}"
+    ALEMBIC="${ALEMBIC:-alembic}"
+fi
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -38,7 +46,7 @@ for arg in "$@"; do
         --api)       TEST_PATH="backend/tests/test_api" ;;
         --services)  TEST_PATH="backend/tests/test_services" ;;
         --tasks)     TEST_PATH="backend/tests/test_tasks" ;;
-        --coverage)  COVERAGE="--cov=backend/app --cov-report=term-missing --cov-report=html" ;;
+        --coverage)  COVERAGE="--cov=app --cov-report=term-missing --cov-report=html" ;;
         --no-db)     SKIP_DB=true ;;
         --help)
             head -10 "$0" | tail -9
@@ -56,9 +64,9 @@ if [ "$SKIP_DB" = false ]; then
     log_step "Checking PostgreSQL..."
 
     # Check if PostgreSQL is already running on test port
-    if pg_isready -h 127.0.0.1 -p 5444 -U postgres -q 2>/dev/null; then
+    if command -v pg_isready &>/dev/null && pg_isready -h 127.0.0.1 -p 5444 -U postgres -q 2>/dev/null; then
         log_info "PostgreSQL is already running on port 5444"
-    else
+    elif command -v pg_isready &>/dev/null; then
         log_warn "PostgreSQL not running. Starting with docker compose..."
         docker compose -f "$PROJECT_DIR/docker-compose.yml" up -d postgres
         log_info "Waiting for PostgreSQL to be ready..."
@@ -73,30 +81,37 @@ if [ "$SKIP_DB" = false ]; then
             fi
             sleep 1
         done
+    else
+        log_warn "pg_isready not found — skipping PostgreSQL health check"
+        log_info "Assuming PostgreSQL is already running (CI environment)"
     fi
 
     # Create test database if it doesn't exist
-    log_step "Setting up test database..."
-    PGPASSWORD=postgres psql -h 127.0.0.1 -p 5444 -U postgres -tAc \
-        "SELECT 1 FROM pg_database WHERE datname='openreef_test'" | grep -q 1 || \
-        PGPASSWORD=postgres psql -h 127.0.0.1 -p 5444 -U postgres -c "CREATE DATABASE openreef_test"
+    if command -v psql &>/dev/null; then
+        log_step "Setting up test database..."
+        PGPASSWORD=postgres psql -h 127.0.0.1 -p 5444 -U postgres -tAc \
+            "SELECT 1 FROM pg_database WHERE datname='openreef_test'" | grep -q 1 || \
+            PGPASSWORD=postgres psql -h 127.0.0.1 -p 5444 -U postgres -c "CREATE DATABASE openreef_test"
 
-    # Run migrations on test database
-    log_step "Running migrations on test database..."
-    cd "$BACKEND_DIR"
-    DATABASE_URL="postgresql+psycopg2://postgres:postgres@127.0.0.1:5444/openreef_test" \
-        "$BACKEND_DIR/.venv/bin/alembic" upgrade head 2>/dev/null || true
-    cd "$PROJECT_DIR"
+        # Run migrations on test database
+        log_step "Running migrations on test database..."
+        cd "$BACKEND_DIR"
+        DATABASE_URL="postgresql+psycopg2://postgres:postgres@127.0.0.1:5444/openreef_test" \
+            "$ALEMBIC" upgrade head 2>/dev/null || true
+        cd "$PROJECT_DIR"
+    else
+        log_warn "psql not found — skipping database setup (tests use Base.metadata.create_all)"
+    fi
 fi
 
 # ─── Run tests ───
-log_step "Running tests: $TEST_PATH"
+log_step "Running tests: $TEST_PATH (using $PYTHON)"
 echo ""
 
 cd "$PROJECT_DIR"
 export PYTHONPATH="$BACKEND_DIR${PYTHONPATH:+:$PYTHONPATH}"
 
-$VENV_PYTHON -m pytest $TEST_PATH $COVERAGE
+$PYTHON -m pytest $TEST_PATH $COVERAGE
 RESULT=$?
 
 echo ""
