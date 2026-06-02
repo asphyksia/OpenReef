@@ -6,7 +6,7 @@ version: "3.8"
 
 services:
   finetune:
-    image: ghcr.io/openreef/finetune-worker:cuda-latest
+    image: ghcr.io/asphyksia/finetune-worker:cuda-latest
     build:
       context: .
       dockerfile: Dockerfile

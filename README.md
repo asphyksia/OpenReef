@@ -1,6 +1,6 @@
 # OpenReef
 
-[![Build with Ona](https://ona.com/build-with-ona.svg)](https://app.ona.com/#https://github.com/Asphyksia/OpenReef)
+[![Build with Ona](https://ona.com/build-with-ona.svg)](https://app.ona.com/#https://github.com/asphyksia/OpenReef)
 
 **Simple, affordable AI fine-tuning on decentralized GPU infrastructure.**
 

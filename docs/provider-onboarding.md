@@ -84,10 +84,10 @@ After registration, the management dApp will provide you with the Docker Compose
 
 ```bash
 # NVIDIA providers
-curl -O https://raw.githubusercontent.com/Asphyksia/OpenReef/main/sources/finetune/docker-compose-nvidia.yml
+curl -O https://raw.githubusercontent.com/asphyksia/OpenReef/main/sources/finetune/docker-compose-nvidia.yml
 
 # AMD providers
-curl -O https://raw.githubusercontent.com/Asphyksia/OpenReef/main/sources/finetune/docker-compose-amd.yml
+curl -O https://raw.githubusercontent.com/asphyksia/OpenReef/main/sources/finetune/docker-compose-amd.yml
 
 # Start the worker
 docker compose -f docker-compose-nvidia.yml up -d
@@ -217,7 +217,7 @@ docker compose -f docker-compose-nvidia.yml logs
 
 ## Support
 
-- **GitHub Issues:** https://github.com/Asphyksia/OpenReef/issues
+- **GitHub Issues:** https://github.com/asphyksia/OpenReef/issues
 - **OGPU Discord:** https://opengpu.network/discord
 - **Management dApp:** https://management.opengpu.network
 

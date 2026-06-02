@@ -26,10 +26,10 @@ sources/finetune/
 
 ```bash
 # NVIDIA
-docker buildx build --push -t ghcr.io/openreef/finetune-worker:cuda-latest -f Dockerfile .
+docker buildx build --push -t ghcr.io/asphyksia/finetune-worker:cuda-latest -f Dockerfile .
 
 # AMD ROCm
-docker buildx build --push -t ghcr.io/openreef/finetune-worker:rocm-latest -f Dockerfile.rocm .
+docker buildx build --push -t ghcr.io/asphyksia/finetune-worker:rocm-latest -f Dockerfile.rocm .
 ```
 
 ## Environment variables

@@ -43,7 +43,7 @@ _FINETUNE_SOURCE_ADDRESS = os.environ.get("OGPU_SOURCE_ADDRESS", "")
 
 # URL to the hosted docker-compose files for the OpenReef Axolotl source
 # Must be public HTTPS URLs — providers fetch these to set up their container
-_GITHUB_RAW = "https://raw.githubusercontent.com/Asphyksia/OpenReef/main/sources/finetune"
+_GITHUB_RAW = "https://raw.githubusercontent.com/asphyksia/OpenReef/main/sources/finetune"
 
 _COMPOSE_URL_NVIDIA = os.environ.get(
     "OGPU_COMPOSE_URL_NVIDIA",
