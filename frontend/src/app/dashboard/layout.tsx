@@ -34,9 +34,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
 
   useEffect(() => {
-    getMe().then(setUser).catch(() => router.push("/login"));
+    const fetchUser = () => getMe().then(setUser).catch(() => router.push("/login"));
+    fetchUser();
+    // Refresh user data (balance) every 30 seconds
+    const interval = setInterval(fetchUser, 30000);
     const isDark = document.documentElement.classList.contains("dark");
     setDarkMode(isDark);
+    return () => clearInterval(interval);
   }, [router]);
 
   function toggleDarkMode() {
