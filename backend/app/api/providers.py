@@ -1,4 +1,9 @@
-"""Provider API endpoints for heartbeat, cancel, and stats."""
+"""Provider API endpoints for heartbeat, cancel, and stats.
+
+WARNING: This is an INTERNAL API — not for production use.
+In real OGPU mode, provider authentication is handled on-chain via OGPU wallets.
+The shared secret (PROVIDER_API_SECRET) used here is a mock-mode artifact only.
+"""
 
 import uuid
 

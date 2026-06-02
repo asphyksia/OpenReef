@@ -62,9 +62,26 @@ async def charge_credits(db: DbSession, user_id: uuid.UUID, amount: float, job_i
 
 
 def refund_credits_sync(db: Session, user_id: uuid.UUID, amount: float, job_id: uuid.UUID, description: str = "Job refund") -> None:
-    """Sync version for provider API and Celery tasks."""
+    """Sync version for provider API and Celery tasks. Idempotent: skips if already refunded."""
+    existing = db.execute(
+        select(CreditLedger.id).where(
+            CreditLedger.job_id == job_id,
+            CreditLedger.type == "refund"
+        )
+    ).first()
+    if existing:
+        return  # Already refunded, skip
     _add_ledger_entry(db, user_id, abs(amount), "refund", job_id=job_id, description=description)
 
 
 async def refund_credits(db: DbSession, user_id: uuid.UUID, amount: float, job_id: uuid.UUID, description: str = "Job refund") -> None:
+    """Async version for API endpoints. Idempotent: skips if already refunded."""
+    existing = await db.execute(
+        select(CreditLedger.id).where(
+            CreditLedger.job_id == job_id,
+            CreditLedger.type == "refund"
+        )
+    )
+    if existing.first():
+        return  # Already refunded, skip
     _add_ledger_entry(db, user_id, abs(amount), "refund", job_id=job_id, description=description)

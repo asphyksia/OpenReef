@@ -1,6 +1,7 @@
 # FastAPI + server
 fastapi>=0.115.12
 uvicorn[standard]>=0.34.0
+gunicorn>=22.0.0
 python-multipart>=0.0.20
 
 # Database

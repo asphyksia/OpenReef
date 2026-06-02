@@ -99,14 +99,42 @@ def load_model():
 
 
 def _download_dataset(url: str, target: Path) -> Path:
-    """Download dataset from R2 (or public URL) to local path."""
-    if url.startswith("http://") or url.startswith("https://"):
-        import urllib.request
-        urllib.request.urlretrieve(url, target)
-    elif url.startswith("r2://"):
-        raise ValueError(f"R2 URLs require presigned URLs: {url}")
-    else:
-        raise ValueError(f"Unknown dataset URL scheme: {url}")
+    """Download dataset from R2 (or public URL) to local path.
+
+    Validates URL to prevent SSRF attacks: only HTTPS allowed,
+    DNS resolved IP must not be private/loopback/link-local.
+    """
+    import ipaddress
+    import socket
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(url)
+
+    if not parsed.scheme or parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Only HTTP/HTTPS URLs allowed for dataset download: {url}")
+
+    # Only allow HTTPS to prevent credential leakage
+    if parsed.scheme != "https":
+        raise ValueError(f"Only HTTPS URLs allowed for dataset download: {url}")
+
+    # Resolve DNS and check IP is not private
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError(f"Invalid URL — no hostname: {url}")
+
+    try:
+        resolved_ip = socket.gethostbyname(hostname)
+    except socket.gaierror as e:
+        raise ValueError(f"Cannot resolve hostname {hostname}: {e}")
+
+    ip = ipaddress.ip_address(resolved_ip)
+    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+        raise ValueError(
+            f"Dataset URL resolves to a private/internal IP ({resolved_ip}) — SSRF blocked"
+        )
+
+    import urllib.request
+    urllib.request.urlretrieve(url, target)
     return target
 
 

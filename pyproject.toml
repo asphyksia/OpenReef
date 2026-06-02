@@ -1,0 +1,13 @@
+[project]
+name = "openreef"
+version = "0.1.0"
+description = "AI fine-tuning platform on OpenGPU Network"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["backend/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

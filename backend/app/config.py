@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
     api_url: str = "http://localhost:8000"
 
+    # Admin API key for protected endpoints (metrics, etc.)
+    admin_api_key: str = ""
+
     # Email (Resend)
     resend_api_key: str = ""
     email_from: str = "OpenReef <onboarding@resend.dev>"
@@ -84,6 +87,8 @@ class Settings(BaseSettings):
                 missing.append("API_URL (must be HTTPS in production)")
             if self.email_verification_enabled and not self.resend_api_key:
                 missing.append("RESEND_API_KEY (required when EMAIL_VERIFICATION_ENABLED=true)")
+            if not self.admin_api_key:
+                missing.append("ADMIN_API_KEY (required in production for metrics endpoint)")
             if missing:
                 raise RuntimeError(
                     f"Missing required settings for production: {', '.join(missing)}"
