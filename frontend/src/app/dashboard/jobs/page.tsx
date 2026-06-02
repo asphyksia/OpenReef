@@ -20,10 +20,12 @@ export default function JobsPage() {
   const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
     listJobs()
-      .then(setJobs)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .then((data) => { if (mounted) setJobs(data); })
+      .catch(() => {})
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   }, []);
 
   async function handleCancel() {

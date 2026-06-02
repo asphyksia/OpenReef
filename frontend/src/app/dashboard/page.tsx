@@ -16,8 +16,10 @@ export default function DashboardPage() {
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
 
   useEffect(() => {
-    listJobs().then(setJobs).catch(console.error);
-    getBalance().then(setBalance).catch(console.error);
+    let mounted = true;
+    listJobs().then((data) => { if (mounted) setJobs(data); }).catch(() => {});
+    getBalance().then((data) => { if (mounted) setBalance(data); }).catch(() => {});
+    return () => { mounted = false; };
   }, []);
 
   return (
