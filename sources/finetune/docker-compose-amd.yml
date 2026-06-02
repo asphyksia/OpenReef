@@ -7,6 +7,7 @@ version: "3.8"
 services:
   finetune:
     image: ghcr.io/asphyksia/finetune-worker:rocm-latest
+    pull_policy: always
     build:
       context: .
       dockerfile: Dockerfile.rocm
